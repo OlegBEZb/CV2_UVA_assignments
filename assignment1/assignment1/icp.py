@@ -1,6 +1,7 @@
 import numpy as np
 import open3d as o3d
 import os
+from scipy.spatial import KDTree
 
 # globals.
 DATA_DIR = 'Data'  # This depends on where this file is located. Change for your needs.
@@ -81,6 +82,15 @@ while np.abs(RMS_old - RMS) > epsilon and RMS != 0.0:
                 closest = target_point
         matched[i,:] = closest
     matched = matched.T
+
+    # Uncomment if you want to use kdtree instead of brute force!
+    # tree = KDTree(bunny_target.T)
+    # _, indices = tree.query(transformed.T)
+    # matched2 = np.empty(transformed.T.shape)
+    # for i, index in enumerate(indices):
+    #     matched2[i,:] = bunny_target.T[index]
+    # matched2 = matched2.T
+
 ###### 5. Calculate RMS
     RMS = np.sqrt(np.mean(np.linalg.norm(matched - transformed)**2))
     print(RMS)
