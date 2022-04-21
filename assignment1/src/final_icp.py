@@ -163,12 +163,6 @@ def uniform_sampling(source, target, part=50):
     target = np.random.permutation(target.T)[:c, :].T
     return source, target
 
-def random_sampling(source, target, frac=0.01):
-    c = int(min(bunny_source.shape[1], bunny_target.shape[1]) / part)
-    source = np.random.permutation(source.T)[:c, :].T
-    target = np.random.permutation(target.T)[:c, :].T
-    return source, target
-
 
 ############################
 #   Merge Scene            #
@@ -191,7 +185,7 @@ if __name__ == "__main__":
     orig_bunny_source, orig_bunny_target = open_bunny_data()
     bunny_source, bunny_target = orig_bunny_source.copy(), orig_bunny_target.copy()
 
-    if SAMPLING_METHOD == 'uni':
+    if SAMPLING_METHOD == 'all':
         # downsampling both point clouds for the brute force search for correspondences
         step = 1 # 100
         bunny_source = bunny_source[:, ::step]
