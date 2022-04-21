@@ -158,7 +158,7 @@ def apply_R_t_lists(source, R_list, t_list):
 
 
 def uniform_sampling(source, target, part=50):
-    c = int(min(bunny_source.shape[1], bunny_target.shape[1]) / part)
+    c = int(min(source.shape[1], target.shape[1]) / part)
     source = np.random.permutation(source.T)[:c, :].T
     target = np.random.permutation(target.T)[:c, :].T
     return source, target
