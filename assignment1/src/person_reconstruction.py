@@ -33,7 +33,7 @@ def visualize_pcd_array(array, name):
     ## somewhere we should add the picture to this Visualizer?
     # vis.capture_screen_image(os.path.join(DATA_DIR+"/videos/", f"video_{name}" ))
 
-def estimate_poses(N=1):
+def estimate_poses_merge_at_end(N=1): #3.1
     R_list = []
     t_list = []
 
@@ -63,6 +63,29 @@ def estimate_poses(N=1):
     visualize_pcd_array(sampled_merged_clouds, N)
         
 
+def estimate_poses_and_merge(N=4): #3.2
+
+    merged_source = get_pcd_array_picture(0).T # our icp algorithm needs dim x n
+
+    for picture_no in tqdm(range(N, 99, N)):
+        target = get_pcd_array_picture(picture_no).T # our icp algorithm needs dim x n
+
+        sampled_source, sampled_target = final_icp.uniform_sampling(merged_source, target, part=100)
+        _, R, t = final_icp.icp(sampled_source, sampled_target, method='kd', sampling='none')
+
+        source_reconstructed = final_icp.apply_R_t_lists(merged_source,R,t)
+
+        merged_source = np.concatenate((source_reconstructed, target), axis=1)
+
+    part = 1 # no sampling
+    no_samples = int(merged_source.shape[1] / part) 
+    sampled_merged_clouds = np.random.permutation(merged_source.T)[:no_samples, :]
+
+    visualize_pcd_array(sampled_merged_clouds, N)
+
+
+
 if __name__ == "__main__":
-    estimate_poses(N=10)
+    # estimate_poses_merge_at_end(N=10)
+    estimate_poses_and_merge(N=10)
     # visualize_pcd_array(get_pcd_array_picture(0), 'trial')
