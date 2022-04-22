@@ -6,7 +6,7 @@ from copy import deepcopy
 from sklearn.neighbors import KDTree
 
 # globals.
-DATA_DIR = '../Data'  # This depends on where this file is located. Change for your needs.
+DATA_DIR = '../assignment1/Data'  # This depends on where this file is located. Change for your needs.
 
 
 # == Load data ==
@@ -81,22 +81,38 @@ def icp(source, target, method='bf', sampling='none', epsilon=0.0001, n_space=3,
             matched = brute_force_cloud_matching(source=transformed, target=target_updated)
         elif method == 'kd':
             matched = kd_tree_cloud_matching(source=transformed, target=target_updated)
+        elif method == 'zbuf':
+            transformed_new, matched = z_buffer_cloud_matching(source=transformed,target=target_updated,R=R,t=t)
         else:
             raise ValueError(f"'method' should be one of ['bf']. Given: {method}")
 
-        # 5. Calculate RMSE
-        RMSE = mean_squared_error(matched, transformed, squared=False)
-        print('RMSE:', RMSE)
-        print('RMSE with original:', mean_squared_error(source_updated, transformed, squared=False))
+        if method == 'zbuf':
+            print(matched.shape)
+            print(transformed_new.shape)
+            RMSE = mean_squared_error(matched, transformed_new, squared=False)
+            print('RMSE:', RMSE)
 
-        # 6. Refine R and t using SVD
-        R, t = calc_transformation(transformed, matched)
-        R_list.append(R)
-        t_list.append(t)
-        print('R\n', R)
-        print('t\n', t)
+            R, t = calc_transformation(transformed_new, matched)
+            R_list.append(R)
+            t_list.append(t)
+            print('R\n', R)
+            print('t\n', t)
 
-        source_updated = transformed
+            source_updated = transformed_new
+        else:
+            # 5. Calculate RMSE
+            RMSE = mean_squared_error(matched, transformed, squared=False)
+            print('RMSE:', RMSE)
+            print('RMSE with original:', mean_squared_error(source_updated, transformed, squared=False))
+
+            # 6. Refine R and t using SVD
+            R, t = calc_transformation(transformed, matched)
+            R_list.append(R)
+            t_list.append(t)
+            print('R\n', R)
+            print('t\n', t)
+
+            source_updated = transformed
 
     return transformed, R_list, t_list
 
@@ -142,6 +158,89 @@ def kd_tree_cloud_matching(source, target):
     matched = matched.T
     return matched
 
+def z_buffer_cloud_matching(source, target, R, t):
+    # transform souce to target coordinate system
+    source = (source.T @ R + t).T
+    union = np.unique(np.append(source, target, axis=1).T,axis=1).T
+    bbox = np.min(union[0]), np.max(union[0]), np.min(union[1]), np.max(union[1])
+    H = 10
+    W = 10
+    # divide the bbox in H x W cells
+    hs = np.linspace(bbox[2],bbox[3],H)
+    ws = np.linspace(bbox[0],bbox[1],W)
+    source_buf = np.zeros((H,W))
+    target_buf = np.zeros((H,W))
+
+    # for every point in source, find to which cell of the buffer it belongs, and store index
+    for source_idx, point in enumerate(source.T):
+        x,y,z = point
+        idxs = [0,0]
+        for i, w in enumerate(ws):
+            if (i==len(ws)-1 and w < x) or (w < x and ws[i+1] > x):
+                idxs[0] = i
+        for j, h in enumerate(hs):
+            if (j==len(hs)-1 and h < y) or (h < y and hs[j+1] > y):
+                idxs[1] = j
+        # if cell is already taken, overwrite if point is closer to xy plane
+        if source_buf[idxs[1],idxs[0]] != 0:
+            cur = source.T[int(source_buf[idxs[1],idxs[0]])]
+            if np.abs(cur[2]) > np.abs(point[2]):
+                source_buf[idxs[1],idxs[0]] = int(source_idx + 1) # +1 needed to identify when cell is not taken (then it's 0)
+        else:
+            source_buf[idxs[1],idxs[0]] = int(source_idx + 1)
+
+    # for every point in target, find to which cell of the buffer it belongs, and store index
+    for target_idx, point in enumerate(target.T):
+        x,y,z = point
+        idxs = [0,0]
+        for i, w in enumerate(ws):
+            if (i==len(ws)-1 and w < x) or (w < x and ws[i+1] > x):
+                idxs[0] = i
+        for j, h in enumerate(hs):
+            if (j==len(hs)-1 and h < y) or (h < y and hs[j+1] > y):
+                idxs[1] = j
+        # if cell is already taken, overwrite if point is closer to xy plane (smaller z)
+        if target_buf[idxs[1],idxs[0]] != 0:
+            cur = target.T[int(target_buf[idxs[1],idxs[0]])]
+            if np.abs(cur[2]) > np.abs(point[2]):
+                target_buf[idxs[1],idxs[0]] = int(target_idx + 1)
+        else:
+            target_buf[idxs[1],idxs[0]] = int(target_idx + 1)
+
+    # find correspondences for every source buffer cell -> look in 3x3 window around target buffer cell
+    correspondences = []
+    for j in range(H):
+        for i in range(W):
+            if source_buf[j,i] != 0:
+                source_idx = source_buf[j,i] - 1 # -1 needed to make up for +1 earlier
+                target_idxs = []
+                for i_win in [-1,0,1]:
+                    for j_win in [-1,0,1]:
+                        if (i + i_win >=0 and i + i_win < W and j + j_win >=0 and j + j_win < H):
+                            if target_buf[j+j_win, i+i_win] != 0:
+                                target_idxs.append(int(target_buf[j+j_win, i+i_win] - 1)) # -1 needed
+                # if there is no match, point in source is not interesting
+                if target_idxs != []:
+                    closest = np.inf
+                    best_target_idx = 0
+                    # if there are multiple target buffer cells matched, find closest (euclidean distance)
+                    for idx in target_idxs:
+                        target_point = target.T[idx]
+                        source_point = source.T[int(source_idx)]
+                        if np.linalg.norm(target_point-source_point) < closest:
+                            closest = np.linalg.norm(target_point-source_point)
+                            best_target_idx = idx
+                    # so correspondence is list with tuple of matched (source_index, target_index)
+                    correspondences.append((int(source_idx), int(best_target_idx)))
+
+    transformed = np.empty((len(correspondences),3))
+    matched = np.empty((len(correspondences),3))
+    # transform the correspondences list to new source and target matrix
+    for i, corr in enumerate(correspondences):
+        transformed[i, :] = source.T[corr[0]]
+        matched[i,:] = target.T[corr[1]]
+
+    return transformed.T, matched.T
 
 def get_point_cloud(arr, c=[0, 0, 0]):
     point_cloud = o3d.geometry.PointCloud()
@@ -222,7 +321,7 @@ if __name__ == "__main__":
     o3d.visualization.draw_geometries([target, source])
 
     transformed, R_list, t_list = icp(source=bunny_source, target=bunny_target, method='kd',
-                                      sampling=SAMPLING_METHOD, epsilon=0.00001, n_space=3, part=50)
+                                      sampling=SAMPLING_METHOD, epsilon=0.001, n_space=3, part=50)
 
     constructed_comb = apply_R_t_lists(orig_bunny_source.copy(), R_list, t_list)  # make the same as the last iteration
     constructed_comb = get_point_cloud(constructed_comb.T, [1, 0, 1])  # purple
@@ -233,5 +332,5 @@ if __name__ == "__main__":
     transformed = get_point_cloud(transformed.T, [0, 0, 1])  # blue
     o3d.visualization.draw_geometries([target, source,
                                        constructed_comb,
-                                       transformed
+                                    #    transformed
                                        ])
