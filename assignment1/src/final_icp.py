@@ -286,7 +286,7 @@ if __name__ == "__main__":
 
     if SAMPLING_METHOD == 'all':
         # downsampling both point clouds for the brute force search for correspondences
-        step = 1 # 100
+        step = 10 # 100
         bunny_source = bunny_source[:, ::step]
         bunny_target = bunny_target[:, ::step]
 
@@ -318,10 +318,10 @@ if __name__ == "__main__":
 
     source = get_point_cloud(bunny_source.T, [1, 0, 0])  # red
     target = get_point_cloud(bunny_target.T, [0, 1, 0])  # green
-    o3d.visualization.draw_geometries([target, source])
+    # o3d.visualization.draw_geometries([target, source])
 
     transformed, R_list, t_list = icp(source=bunny_source, target=bunny_target, method='kd',
-                                      sampling=SAMPLING_METHOD, epsilon=0.001, n_space=3, part=50)
+                                      sampling=SAMPLING_METHOD, epsilon=0.0001, n_space=3, part=50)
 
     constructed_comb = apply_R_t_lists(orig_bunny_source.copy(), R_list, t_list)  # make the same as the last iteration
     constructed_comb = get_point_cloud(constructed_comb.T, [1, 0, 1])  # purple
