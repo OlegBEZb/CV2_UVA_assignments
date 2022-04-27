@@ -1,0 +1,7 @@
+icp_time,method,sampling,epsilon,rmse_list
+0.0467071533203125,zbuf,uni,0.001,[]
+0.1230771541595459,zbuf,rand,0.001,[]
+0.0053882598876953125,zbuf,multires,0.001,[]
+0.06778478622436523,zbuf,uni,0.001,[]
+0.1759779453277588,zbuf,rand,0.001,[]
+0.004817962646484375,zbuf,multires,0.001,[]
