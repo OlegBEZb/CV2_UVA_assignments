@@ -24,10 +24,6 @@ def keypoint_matcher(img1, img2, random_n=None, filter_neighbours=True, draw_mat
     # to do additional work on that.
     matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
 
-    if random_n is not None:
-        # get random subset of matches list
-        matches = random.sample(matches, random_n)
-
     if draw_matches:
         # cv.drawMatches() draws the matches. It stacks two images horizontally and draw lines from first image to
         # second image showing best matches. There is also cv.drawMatchesKnn which draws all the k best matches. If k=2,
@@ -46,13 +42,17 @@ def keypoint_matcher(img1, img2, random_n=None, filter_neighbours=True, draw_mat
         matches = [m for m in matches if m[0].distance / m[1].distance < 0.8]
         print(f'Before filtering neighbours: {len_before}. After: {len(matches)}')
 
+    if random_n is not None:
+        # get random subset of matches list
+        matches = random.sample(matches, random_n)
+
     if draw_matches:
         # cv.drawMatches() draws the matches. It stacks two images horizontally and draw lines from first image to
         # second image showing best matches. There is also cv.drawMatchesKnn which draws all the k best matches. If k=2,
         # it will draw two match-lines for each keypoint.
         plt.figure(figsize=(15, 15))
         show_matches = cv.drawMatchesKnn(img1, kp1, img2, kp2,
-                                         [(m[0], ) for m in matches],  # matches,
+                                         [(m[0],) for m in matches],  # matches,
                                          None)
         plt.imshow(show_matches)
 
@@ -66,38 +66,43 @@ def keypoint_matcher(img1, img2, random_n=None, filter_neighbours=True, draw_mat
     #     plt.imshow(show_matches)
 
     # extracting coordinates of matches points
-    points1 = []
-    points2 = []
+    matched_points1 = []
+    matched_points2 = []
     for m in matches:
         # according to the doc, queryIdx refers to the first keypoints and trainIdx refers to second keypoints
         # here we just take the closest point from all neighbours
-        points1.append(kp1[m[0].queryIdx].pt)
-        points2.append(kp2[m[0].trainIdx].pt)
+        matched_points1.append(kp1[m[0].queryIdx].pt)
+        matched_points2.append(kp2[m[0].trainIdx].pt)
 
-    return matches, points1, points2, kp1, kp2
+    return matches, matched_points1, matched_points2, kp1, kp2
 
 
-def get_fundamental_matrix(matches):
+def get_fundamental_matrix(matched_points1, matched_points2):
+    assert len(matched_points1) == len(matched_points2)
+    n = len(matched_points1)
     A = []
-    for match in matches:
-        # original point in image1
-        p1 = kp1[match[0].queryIdx].pt
-        # matched point in image2
-        p2 = kp2[match[0].trainIdx].pt
-
-        A.append([p1[0] * p2[0], p1[0] * p2[1], p1[0],
-                  p1[1] * p2[0], p1[1] * p2[1], p1[1],
-                  p2[0], p2[1], 1])
+    for p1, p2 in zip(matched_points1, matched_points2):
+        x1, y1 = p1
+        x2, y2 = p2
+        A.append([x1 * x2, x1 * y2, x1,
+                  y1 * x2, y1 * y2, y1,
+                  x2, y2, 1])
     A = np.array(A)
+    assert A.shape == (n, 9)
     U, D, V_t = np.linalg.svd(A)
+    print('U, D, V_t = np.linalg.svd(A)', U.shape, D.shape, V_t.shape)
 
     # slide 17: https://inst.eecs.berkeley.edu/~ee290t/fa19/lectures/lecture9-4-computing-the-fundamental-matrix.pdf
+    # The entries of F are the components of the column of V corresponding to the smallest singular value.
     tmp = V_t.T[:, n - 1]
-    print(tmp.shape)
+    print(f'V_t.T[:, n - 1]\n{tmp}\n{tmp.shape}')
     F = tmp.reshape((3, 3))
+    print(f'F\n{F}\n{F.shape}')
     FU, FD, FV_t = np.linalg.svd(F)
     FD_prime = FD.copy()
+    print('FD_prime', FD_prime)
     FD_prime[np.argmin(FD)] = 0
+    print('FD_prime with the smallest singular value zeroed', FD_prime)
     new_F = np.dot(np.dot(FU, np.diag(FD_prime)), FV_t)
 
     return new_F
@@ -127,21 +132,20 @@ def draw_epipolar_lines(image1, image2, matches, kp1, kp2, F):
         x1, y1 = map(int, [c, -(r[2] + r[0] * c) / r[1]])
         cv.line(image1, (x0, y0), (x1, y1), (0, 255, 0), 3)
 
-    # ax2.imshow(image2)
-    # ax1.imshow(image1)
+    plt.figure(figsize=(15, 15))
     show_matches = cv.drawMatchesKnn(image1, kp1, image2, kp2, matches, None)
-
     plt.imshow(show_matches)
-    plt.axis(False)
-    plt.show()
 
 
 if __name__ == '__main__':
-    image1 = cv.imread("../Data/House/House/frame00000001.png")
-    image2 = cv.imread("../Data/House/House/frame00000049.png")
+    image1 = cv.imread("../Data/House/frame00000001.png")
+    image2 = cv.imread("../Data/House/frame00000049.png")
 
     n = 8
-    matches, pts1, pts2, kp1, kp2 = keypoint_matcher(image1, image2, n)
+    matches, matched_points1, matched_points2, kp1, kp2 = keypoint_matcher(image1, image2,
+                                                                           random_n=n,
+                                                                           filter_neighbours=True,
+                                                                           draw_matches=True)
 
-    F = get_fundamental_matrix(matches)
+    F = get_fundamental_matrix(matched_points1, matched_points2)
     draw_epipolar_lines(image1, image2, matches, kp1, kp2, F)
