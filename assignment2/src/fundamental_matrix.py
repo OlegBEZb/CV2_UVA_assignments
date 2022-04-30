@@ -36,7 +36,7 @@ def keypoint_matcher(img1, img2, random_n=None, filter_neighbours=True, draw_mat
         # in some cases, the second closest-match may be very near to the first. It may happen due to noise or some
         # other reasons. In that case, ratio of closest-distance to second-closest distance is taken. If it is greater
         # than 0.8, they are rejected. It eliminates around 90% of false matches while discards only 5% correct matches,
-        # as per the paper.
+        # as per Lowe's paper.
         len_before = len(matches)
         # With lower thresholds it's even better
         matches = [m for m in matches if m[0].distance / m[1].distance < 0.8]
