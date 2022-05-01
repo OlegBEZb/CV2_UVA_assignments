@@ -85,9 +85,35 @@ def keypoint_matcher(img1, img2, n_points=8, random_selection=False, filter_neig
     return matches, matched_points1, matched_points2, kp1, kp2
 
 
-def get_fundamental_matrix(matched_points1, matched_points2):
+def normalize_points(matched_points):
+    mx = np.mean([p[0] for p in matched_points])
+    my = np.mean([p[1] for p in matched_points])
+    d = sum([np.sqrt((p[0] - mx) ** 2 + (p[1] - my) ** 2) for p in matched_points]) / len(matched_points)
+    print(f"mean x: {round(mx, 3)}, mean y: {round(my, 3)}, average distance to the mean: {round(d, 3)}")
+
+    coef = np.sqrt(2) / d
+
+    T = np.array([[coef, 0, -mx * coef],
+                  [0, coef, -my * coef],
+                  [0, 0, 1]])
+
+    result_list = []
+    for p_i in matched_points:
+        p_i = np.array([p_i[0], p_i[1], 1])
+        p_i_hat = np.dot(T, p_i)
+        result_list.append((p_i_hat[0], p_i_hat[1]))
+
+    return result_list, T
+
+
+def get_fundamental_matrix(matched_points1, matched_points2, normalize=True):
     assert len(matched_points1) == len(matched_points2)
     n = len(matched_points1)
+
+    if normalize:
+        matched_points1, T = normalize_points(matched_points1)
+        matched_points2, T_prime = normalize_points(matched_points2)
+
     A = []
     for p1, p2 in zip(matched_points1, matched_points2):
         x1, y1 = p1
@@ -112,6 +138,9 @@ def get_fundamental_matrix(matched_points1, matched_points2):
     FD_prime[np.argmin(FD)] = 0
     print('FD_prime with the smallest singular value zeroed', FD_prime)
     new_F = np.dot(np.dot(FU, np.diag(FD_prime)), FV_t)
+
+    if normalize:
+        new_F = np.dot(np.dot(T_prime.T, new_F), T)
 
     return new_F
 
