@@ -12,25 +12,27 @@ import matplotlib.pyplot as plt
 #     plt.axis(False)
 #     plt.show()
 
-def keypoint_matcher(img1, img2, random_n=None, filter_neighbours=True, draw_matches=False):
+def keypoint_matcher(img1, img2, n_points=8, random_selection=False, filter_neighbours=True, draw_matches=False):
+    # TODO: this may be done once instead of repetition in the chaining part
     sift = cv.SIFT_create()
     kp1, descriptors1 = sift.detectAndCompute(img1, None)
     kp2, descriptors2 = sift.detectAndCompute(img2, None)
 
     # TODO: if works slow, replace with KD
-    matcher = cv.BFMatcher()
+    matcher = cv.BFMatcher(normType=cv.NORM_L2)
     # Once it is created, two important methods are BFMatcher.match() and BFMatcher.knnMatch(). First one returns the
     # best match. Second method returns k best matches where k is specified by the user. It may be useful when we need
     # to do additional work on that.
+    # TODO: check why contains duplicated pairs. It doesn't affect chaining
     matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
 
-    if draw_matches:
-        # cv.drawMatches() draws the matches. It stacks two images horizontally and draw lines from first image to
-        # second image showing best matches. There is also cv.drawMatchesKnn which draws all the k best matches. If k=2,
-        # it will draw two match-lines for each keypoint.
-        plt.figure(figsize=(15, 15))
-        show_matches = cv.drawMatchesKnn(img1, kp1, img2, kp2, matches, None)
-        plt.imshow(show_matches)
+    # if draw_matches:
+    #     # cv.drawMatches() draws the matches. It stacks two images horizontally and draw lines from first image to
+    #     # second image showing best matches. There is also cv.drawMatchesKnn which draws all the k best matches. If k=2,
+    #     # it will draw two match-lines for each keypoint.
+    #     plt.figure(figsize=(15, 15))
+    #     show_matches = cv.drawMatchesKnn(img1, kp1, img2, kp2, matches, None)
+    #     plt.imshow(show_matches)
 
     if filter_neighbours:
         # in some cases, the second closest-match may be very near to the first. It may happen due to noise or some
@@ -42,9 +44,15 @@ def keypoint_matcher(img1, img2, random_n=None, filter_neighbours=True, draw_mat
         matches = [m for m in matches if m[0].distance / m[1].distance < 0.8]
         print(f'Before filtering neighbours: {len_before}. After: {len(matches)}')
 
-    if random_n is not None:
-        # get random subset of matches list
-        matches = random.sample(matches, random_n)
+    assert len(matches) > 8, 'not enough point for 8-points algorithm'
+
+    if n_points != -1:
+        if random_selection:
+            # get random subset of matches list
+            matches = random.sample(matches, n_points)
+        else:
+            # Sort them in the order of their distance.
+            matches = sorted(matches, key=lambda x: x[0].distance)[:n_points]
 
     if draw_matches:
         # cv.drawMatches() draws the matches. It stacks two images horizontally and draw lines from first image to
@@ -109,6 +117,7 @@ def get_fundamental_matrix(matched_points1, matched_points2):
 
 
 def draw_epipolar_lines(image1, image2, matches, kp1, kp2, F):
+    # TODO: check with https://docs.opencv.org/4.x/da/de9/tutorial_py_epipolar_geometry.html
     _, c, _ = image1.shape
 
     for match in matches:
