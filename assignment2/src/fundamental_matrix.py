@@ -106,6 +106,17 @@ def normalize_points(matched_points):
     return result_list, T
 
 
+def sampson_distance(p1, p2, F):
+    p1 = np.array([p1[0], p1[1], 1])
+    p2 = np.array([p2[0], p2[1], 1])
+
+    Fp1 = np.dot(F, p1)
+    Fp2 = np.dot(F.T, p2)
+    denom = Fp1[0] ** 2 + Fp1[1] ** 2 + Fp2[0] ** 2 + Fp2[1] ** 2
+    err = np.dot(np.dot(p2.T, F), p1) ** 2 / denom
+    return err
+
+
 def get_fundamental_matrix(matched_points1, matched_points2, normalize=True):
     assert len(matched_points1) == len(matched_points2)
     n = len(matched_points1)
@@ -128,7 +139,7 @@ def get_fundamental_matrix(matched_points1, matched_points2, normalize=True):
 
     # slide 17: https://inst.eecs.berkeley.edu/~ee290t/fa19/lectures/lecture9-4-computing-the-fundamental-matrix.pdf
     # The entries of F are the components of the column of V corresponding to the smallest singular value.
-    tmp = V_t.T[:, n - 1]
+    tmp = V_t.T[:, -1]
     print(f'V_t.T[:, n - 1]\n{tmp}\n{tmp.shape}')
     F = tmp.reshape((3, 3))
     print(f'F\n{F}\n{F.shape}')
@@ -143,6 +154,26 @@ def get_fundamental_matrix(matched_points1, matched_points2, normalize=True):
         new_F = np.dot(np.dot(T_prime.T, new_F), T)
 
     return new_F
+
+
+def get_fundamental_matrix_ransac(matched_points1, matched_points2, threshold=1, iterations=100):
+    # TODO: make recursive
+
+    best_F = None
+    best_inliers_num = 0
+
+    for i in range(iterations):
+        import random
+        iter_points1, iter_points2 = zip(*random.sample(list(zip(matched_points1, matched_points2)), 8))
+        F = get_fundamental_matrix(iter_points1, iter_points2, normalize=True)
+        inliers = len(
+            [1 for p1, p2 in zip(matched_points1, matched_points2) if sampson_distance(p1, p2, F) < threshold])
+        if inliers > best_inliers_num:
+            best_inliers_num = inliers
+            print('new best number of inliers', best_inliers_num)
+            best_F = F
+
+    return best_F
 
 
 def draw_epipolar_lines(image1, image2, matches, kp1, kp2, F):
