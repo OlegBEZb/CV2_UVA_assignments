@@ -26,10 +26,9 @@ def get_row_value_idx(row, value):
         return None
 
 
-def chaining(**_matching_kwargs):
+def chaining(sparse_fill_value=-1e-4, **_matching_kwargs):
     # initialize the PVM, -1 is placeholder
-    m = 49*2
-    sparse_fill_value = -1e-4
+    m = 49 * 2
     PVM = np.full((m, 1), sparse_fill_value)  # num of images twice
 
     # loop through all image pairs and perform keypoint_matcher
