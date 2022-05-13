@@ -223,4 +223,3 @@ if __name__ == '__main__':
                                                                            draw_matches=True)
 
     F = get_fundamental_matrix(matched_points1, matched_points2)
-    draw_epipolar_lines(image1, image2, matches, kp1, kp2, F)
