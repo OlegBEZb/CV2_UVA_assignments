@@ -217,9 +217,7 @@ if __name__ == '__main__':
     image2 = cv.imread("../Data/House/frame00000049.png")
 
     n = 8
-    matches, matched_points1, matched_points2, kp1, kp2 = keypoint_matcher(image1, image2,
-                                                                           random_n=n,
-                                                                           filter_neighbours=True,
-                                                                           draw_matches=True)
+    matches, matched_points1, matched_points2, kp1, kp2 = keypoint_matcher(image1, image2)
 
     F = get_fundamental_matrix(matched_points1, matched_points2)
+    print(F)

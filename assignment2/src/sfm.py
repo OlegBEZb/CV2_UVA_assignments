@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.spatial import procrustes
+from chaining import chaining
 
 
 def normalize(column):
@@ -124,4 +125,6 @@ def allign_cloud_points_cumulatively(s_list):
 
 
 if __name__ == '__main__':
-    factorize_and_stitch()
+    PVM = chaining()
+    already_alligned_standardized = factorize_and_stitch(PVM)
+    print(already_alligned_standardized)

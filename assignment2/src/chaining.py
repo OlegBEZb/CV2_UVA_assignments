@@ -78,4 +78,5 @@ def chaining(sparse_fill_value=-1e-4, **_matching_kwargs):
 
 
 if __name__ == '__main__':
-    chaining()
+    PVM = chaining()
+    print(PVM)
