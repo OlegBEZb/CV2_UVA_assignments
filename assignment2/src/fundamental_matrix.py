@@ -6,6 +6,18 @@ import matplotlib.pyplot as plt
 
 def keypoint_matcher(img1, img2, n_points=8, distance_threshold=None, random_selection=False, filter_neighbours=True,
                      draw_matches=False):
+    """
+
+    :param img1:
+    :param img2:
+    :param n_points: the number of matched points to keep finally. -1 means to keep all. 8 by default
+    :param distance_threshold: in case of consecutive images the distance should be quite low as the points do not change
+    significantly their location in the space. This really helps filtering outliers
+    :param random_selection:
+    :param filter_neighbours: as per Lowe's paper
+    :param draw_matches:
+    :return:
+    """
     # TODO: this may be done once instead of repetition in the chaining part
     sift = cv.SIFT_create()
     kp1, descriptors1 = sift.detectAndCompute(img1, None)
@@ -47,10 +59,13 @@ def keypoint_matcher(img1, img2, n_points=8, distance_threshold=None, random_sel
         print(f'Before filtering by L2 norm with threshold {distance_threshold}: {len_before}. After: {len(matches)}')
 
     assert len(matches) > 8, 'not enough point for 8-points algorithm'
+    if len(matches) < n_points:
+        print(f'Have {len(matches)} matches while asking for n_points={n_points}')
 
     if n_points != -1:
         if random_selection:
             # get random subset of matches list
+            assert len(matches) >= n_points, "'random.sample' fails if 'n_points' is larger than the number of matches"
             matches = random.sample(matches, n_points)
         else:
             # Sort them in the order of distance between descriptors.
@@ -62,7 +77,7 @@ def keypoint_matcher(img1, img2, n_points=8, distance_threshold=None, random_sel
         # it will draw two match-lines for each keypoint.
         plt.figure(figsize=(15, 15))
         show_matches = cv.drawMatchesKnn(img1, kp1, img2, kp2,
-                                         [(m[0],) for m in matches],  # matches,
+                                         [(m[0],) for m in matches[:8]],  # the nearest neighbour of 8 matches
                                          None)
         plt.imshow(show_matches)
 
@@ -172,34 +187,29 @@ def get_fundamental_matrix_ransac(matched_points1, matched_points2, threshold=1,
     return best_F
 
 
-def draw_epipolar_lines(image1, image2, matches, kp1, kp2, F):
-    # TODO: check with https://docs.opencv.org/4.x/da/de9/tutorial_py_epipolar_geometry.html
-    _, c, _ = image1.shape
+def drawlines(img1, img2, lines, pts1, pts2, colors):
+    ''' img1 - image on which we draw the epilines for the points in img2
+    lines - corresponding epilines '''
 
-    for match in matches:
-        # original point in image1
-        p1 = kp1[match[0].queryIdx].pt
-        cv.circle(image1, (int(p1[0]), int(p1[1])), 10, (255, 0, 0), 4)
-        p1 = np.array([p1[0], p1[1], 1])
+    img1 = img1.copy()
+    img2 = img2.copy()
 
-        r = np.dot(F, p1)
+    r, c, _ = img1.shape
+    for r, pt1, pt2, color in zip(lines, pts1, pts2, colors):
         x0, y0 = map(int, [0, -r[2] / r[1]])
         x1, y1 = map(int, [c, -(r[2] + r[0] * c) / r[1]])
-        cv.line(image2, (x0, y0), (x1, y1), (255, 0, 0), 3)
+        img1 = cv.line(img1, (x0, y0), (x1, y1), color, 2)
+        img1 = cv.circle(img1, (int(pt1[0]), int(pt1[1])), 5, color, 5)
+        img2 = cv.circle(img2, (int(pt2[0]), int(pt2[1])), 5, color, 5)
+    return img1, img2
 
-        # matched point in image2
-        p2 = kp2[match[0].trainIdx].pt
-        cv.circle(image2, (int(p2[0]), int(p2[1])), 10, (0, 255, 0), 4)
-        p2 = np.array([p2[0], p2[1], 1])
 
-        r = np.dot(F.T, p2)
-        x0, y0 = map(int, [0, -r[2] / r[1]])
-        x1, y1 = map(int, [c, -(r[2] + r[0] * c) / r[1]])
-        cv.line(image1, (x0, y0), (x1, y1), (0, 255, 0), 3)
-
-    plt.figure(figsize=(15, 15))
-    show_matches = cv.drawMatchesKnn(image1, kp1, image2, kp2, matches, None)
-    plt.imshow(show_matches)
+def random_colors(lines):
+    n = len(lines)
+    colors = []
+    for i in range(n):
+        colors.append(tuple(np.random.randint(0, 255, 3).tolist()))
+    return colors
 
 
 if __name__ == '__main__':
