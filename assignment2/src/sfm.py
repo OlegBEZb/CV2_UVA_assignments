@@ -8,10 +8,7 @@ def normalize(column):
 
 def factorize_and_stitch(pvm):
     # 1. Select a dense block and construct D
-    # D = gt_pvm.copy()
     D = pvm.copy()
-    print('2m: ', D.shape[0])
-    print('n: ', D.shape[1])
 
     # 2 Normalize the point coordinates by translating them to mean
     norm_D = np.apply_along_axis(normalize, 1, D)
@@ -28,12 +25,11 @@ def factorize_and_stitch(pvm):
     S = np.sqrt(W3) @ V_T3
 
     # 5 Eliminate affine ambiguity (additional improvement)
+    L = np.linalg.pinv(M) @ np.eye(M.shape[0]) @ np.linalg.pinv(M).T
+    C = np.linalg.cholesky(L)
 
-    # 6 Use Procrustes analysis to find transformation between corresponding 3D points
-
-    # pcd = o3d.geometry.PointCloud()
-    # pcd.points = o3d.utility.Vector3dVector(S.T)
-    # o3d.visualization.draw_geometries([pcd])
+    M = M @ C
+    S = np.linalg.inv(C) @ S
 
     return S
 
