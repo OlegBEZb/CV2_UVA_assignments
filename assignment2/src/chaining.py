@@ -26,17 +26,16 @@ def get_row_value_idx(row, value):
         return None
 
 
-def chaining(**_matching_kwargs):
+def chaining(sparse_fill_value=-1e-4, **_matching_kwargs):
     # initialize the PVM, -1 is placeholder
-    m = 49*2
-    sparse_fill_value = -1e-4
+    m = 49 * 2
     PVM = np.full((m, 1), sparse_fill_value)  # num of images twice
 
     # loop through all image pairs and perform keypoint_matcher
-    for left_img_idx in tqdm(range(1, 50)):  # stop should be +1, but lower is nice for debugging
+    for left_img_idx in tqdm(range(1, 49)):  # in case of 360 this should also connect the last with the first
         i = (left_img_idx - 1) * 2
         right_image_idx = left_img_idx + 1  # TODO: change in flexible i, j pairs
-        if right_image_idx == 50: right_image_idx = 1
+        # if right_image_idx == 50: right_image_idx = 1   # in case of 360 this should also connect the last with the first
         j = (right_image_idx - 1) * 2
         name1, name2 = get_image_name(left_img_idx), get_image_name(right_image_idx)
         image1 = cv.imread(name1)

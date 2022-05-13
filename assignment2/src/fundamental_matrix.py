@@ -4,15 +4,8 @@ import random
 import matplotlib.pyplot as plt
 
 
-# sift = cv.SIFT_create()
-# kp, des = sift.detectAndCompute(img, None)
-# if bool_plot:
-#     plot = cv.drawKeypoints(img, kp, None, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-#     plt.plot(plot)
-#     plt.axis(False)
-#     plt.show()
-
-def keypoint_matcher(img1, img2, n_points=8, random_selection=False, filter_neighbours=True, draw_matches=False):
+def keypoint_matcher(img1, img2, n_points=8, distance_threshold=None, random_selection=False, filter_neighbours=True,
+                     draw_matches=False):
     # TODO: this may be done once instead of repetition in the chaining part
     sift = cv.SIFT_create()
     kp1, descriptors1 = sift.detectAndCompute(img1, None)
@@ -26,14 +19,6 @@ def keypoint_matcher(img1, img2, n_points=8, random_selection=False, filter_neig
     # TODO: check why contains duplicated pairs. It doesn't affect chaining
     matches = matcher.knnMatch(descriptors1, descriptors2, k=2)
 
-    # if draw_matches:
-    #     # cv.drawMatches() draws the matches. It stacks two images horizontally and draw lines from first image to
-    #     # second image showing best matches. There is also cv.drawMatchesKnn which draws all the k best matches. If k=2,
-    #     # it will draw two match-lines for each keypoint.
-    #     plt.figure(figsize=(15, 15))
-    #     show_matches = cv.drawMatchesKnn(img1, kp1, img2, kp2, matches, None)
-    #     plt.imshow(show_matches)
-
     if filter_neighbours:
         # in some cases, the second closest-match may be very near to the first. It may happen due to noise or some
         # other reasons. In that case, ratio of closest-distance to second-closest distance is taken. If it is greater
@@ -44,6 +29,23 @@ def keypoint_matcher(img1, img2, n_points=8, random_selection=False, filter_neig
         matches = [m for m in matches if m[0].distance / m[1].distance < 0.8]
         print(f'Before filtering neighbours: {len_before}. After: {len(matches)}')
 
+    if distance_threshold is not None:
+        # Yes. You have the usual threshold of m.distance < n.distance in sift. That calculates distance between
+        # descriptor vectors. But since the consecutive views don’t really change much, the actual location of features
+        # can’t really change that much as well in the two views.
+        matches_filtered_by_dist = []
+        len_before = len(matches)
+        for m in matches:
+            # according to the doc, queryIdx refers to the first keypoints and trainIdx refers to second keypoints
+            # here we just take the closest point from all neighbours
+            point_1 = kp1[m[0].queryIdx].pt
+            point_2 = kp2[m[0].trainIdx].pt
+
+            if np.linalg.norm(np.array(point_1) - np.array(point_2)) < distance_threshold:
+                matches_filtered_by_dist.append(m)
+        matches = matches_filtered_by_dist
+        print(f'Before filtering by L2 norm with threshold {distance_threshold}: {len_before}. After: {len(matches)}')
+
     assert len(matches) > 8, 'not enough point for 8-points algorithm'
 
     if n_points != -1:
@@ -51,7 +53,7 @@ def keypoint_matcher(img1, img2, n_points=8, random_selection=False, filter_neig
             # get random subset of matches list
             matches = random.sample(matches, n_points)
         else:
-            # Sort them in the order of their distance.
+            # Sort them in the order of distance between descriptors.
             matches = sorted(matches, key=lambda x: x[0].distance)[:n_points]
 
     if draw_matches:
@@ -64,23 +66,17 @@ def keypoint_matcher(img1, img2, n_points=8, random_selection=False, filter_neig
                                          None)
         plt.imshow(show_matches)
 
-    # matches = sorted(matches, key=lambda x: x[0].distance)
-    # if draw_matches:
-    #     # cv.drawMatches() draws the matches. It stacks two images horizontally and draw lines from first image to
-    #     # second image showing best matches. There is also cv.drawMatchesKnn which draws all the k best matches. If k=2,
-    #     # it will draw two match-lines for each keypoint.
-    #     plt.figure(figsize=(15, 15))
-    #     show_matches = cv.drawMatchesKnn(img1, kp1, img2, kp2, matches[:10], None)
-    #     plt.imshow(show_matches)
-
     # extracting coordinates of matches points
     matched_points1 = []
     matched_points2 = []
     for m in matches:
         # according to the doc, queryIdx refers to the first keypoints and trainIdx refers to second keypoints
         # here we just take the closest point from all neighbours
-        matched_points1.append(kp1[m[0].queryIdx].pt)
-        matched_points2.append(kp2[m[0].trainIdx].pt)
+        point_1 = kp1[m[0].queryIdx].pt
+        point_2 = kp2[m[0].trainIdx].pt
+
+        matched_points1.append(point_1)
+        matched_points2.append(point_2)
 
     return matches, matched_points1, matched_points2, kp1, kp2
 
