@@ -39,7 +39,7 @@ def keypoint_matcher(img1, img2, n_points=8, distance_threshold=None, random_sel
         len_before = len(matches)
         # With lower thresholds it's even better
         matches = [m for m in matches if m[0].distance / m[1].distance < 0.8]
-        print(f'Before filtering neighbours: {len_before}. After: {len(matches)}')
+        # print(f'Before filtering neighbours: {len_before}. After: {len(matches)}')
 
     if distance_threshold is not None:
         # Yes. You have the usual threshold of m.distance < n.distance in sift. That calculates distance between
@@ -56,11 +56,11 @@ def keypoint_matcher(img1, img2, n_points=8, distance_threshold=None, random_sel
             if np.linalg.norm(np.array(point_1) - np.array(point_2)) < distance_threshold:
                 matches_filtered_by_dist.append(m)
         matches = matches_filtered_by_dist
-        print(f'Before filtering by L2 norm with threshold {distance_threshold}: {len_before}. After: {len(matches)}')
+        # print(f'Before filtering by L2 norm with threshold {distance_threshold}: {len_before}. After: {len(matches)}')
 
     assert len(matches) > 8, 'not enough point for 8-points algorithm'
-    if len(matches) < n_points:
-        print(f'Have {len(matches)} matches while asking for n_points={n_points}')
+    # if len(matches) < n_points:
+    #     print(f'Have {len(matches)} matches while asking for n_points={n_points}')
 
     if n_points != -1:
         if random_selection:
