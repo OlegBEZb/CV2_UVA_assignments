@@ -11,7 +11,7 @@ import torch
 # sys.path.insert(1, '~/Documents/MSc AI/ComputerVision2/assignment3/cv2_2022_assignment3/supplemental_code/supplemental_code')
 # import supplemental_code
 
-bfm = h5py.File("../model2017-1_face12_nomouth.h5", 'r')
+bfm = h5py.File("model2017-1_face12_nomouth.h5", 'r')
 
 # Select a specific weight from BFM
 id_mean = np.asarray(bfm['shape/model/mean'], dtype=np.float32) # 3N
@@ -72,9 +72,17 @@ def rotation_y(theta):
 
 def general_rotation(omega):
     alpha, beta, gamma = omega
-    return torch.Tensor([[torch.cos(alpha)*torch.cos(beta), torch.cos(alpha)*torch.sin(beta)*torch.sin(gamma)-torch.sin(alpha)*torch.cos(gamma), torch.cos(alpha)*torch.sin(beta)*torch.cos(gamma)+torch.sin(alpha)*torch.sin(gamma)],
-                         [torch.sin(alpha)*torch.cos(beta), torch.sin(alpha)*torch.sin(beta)*torch.sin(gamma)+torch.cos(alpha)*torch.cos(gamma), torch.sin(alpha)*torch.sin(beta)*torch.cos(gamma)-torch.cos(alpha)*torch.sin(gamma)],
-                         [-torch.sin(beta), torch.cos(beta)*torch.sin(gamma), torch.cos(beta)*torch.cos(gamma)]])
+    rot = torch.zeros((3,3))
+    rot[0,0] = torch.cos(alpha)*torch.cos(beta)
+    rot[0,1] = torch.cos(alpha)*torch.sin(beta)*torch.sin(gamma)-torch.sin(alpha)*torch.cos(gamma)
+    rot[0,2] = torch.cos(alpha)*torch.sin(beta)*torch.cos(gamma)+torch.sin(alpha)*torch.sin(gamma)
+    rot[1,0] = torch.sin(alpha)*torch.cos(beta)
+    rot[1,1] = torch.sin(alpha)*torch.sin(beta)*torch.sin(gamma)+torch.cos(alpha)*torch.cos(gamma)
+    rot[1,2] = torch.sin(alpha)*torch.sin(beta)*torch.cos(gamma)-torch.cos(alpha)*torch.sin(gamma)
+    rot[2,0] = -torch.sin(beta)
+    rot[2,1] = torch.cos(beta)*torch.sin(gamma)
+    rot[2,2] = torch.cos(beta)*torch.cos(gamma)
+    return rot
 
 rot10 = rotation_y(1/36 * np.pi)
 rot_10 = rotation_y(-1/36 * np.pi)
@@ -95,9 +103,9 @@ def convertTo2D(G_new):
 
     # Source: https://www3.ntu.edu.sg/home/ehchua/programming/opengl/CG_BasicsTheory.html
     V = torch.Tensor([[width/2, 0, 0, torch.min(G_new[:,0])+width/2],
-                [0, -heigth/2, 0, torch.min(G_new[:,1])+heigth/2],
-                [0, 0, depth, torch.min(G_new[:,2])],
-                [0, 0, 0, 1]])
+                      [0, -heigth/2, 0, torch.min(G_new[:,1])+heigth/2],
+                      [0, 0, depth, torch.min(G_new[:,2])],
+                      [0, 0, 0, 1]])
 
     angleOfView = torch.tensor(90)
     n = torch.tensor(0.1)
@@ -118,40 +126,20 @@ def convertTo2D(G_new):
     G_new = torch.cat((G_new,vec),1)
     G_new = V @ P @ G_new.T
 
-    G_new[0, :] = G_new[0, :] / G_new[3, :]
-    G_new[1, :] = G_new[1, :] / G_new[3, :]
+    G_def = torch.zeros((2,G_new.shape[1]))
+    G_def[0, :] = G_new[0, :] / G_new[3, :]
+    G_def[1, :] = G_new[1, :] / G_new[3, :]
     # G_new = torch.delete(G_new, obj=[2,3], axis=0)
-    return G_new[:2,:].T # 2xN, only first 2 rows (x,y)
-
-
-#TODO: Ask question on how to go from 2D point cloud to image: rounding to integers decreases the resolution
-#How to go from 2xN to an image that is plottable
-def makeImag(G_new):
-    minX = torch.min(G_new[:,0])
-    maxX = torch.max(G_new[:,0])
-    minY = torch.min(G_new[:,1])
-    maxY = torch.max(G_new[:,1])
-    img = torch.zeros((256, 256, 3), dtype=torch.float32)
-    extraX = torch.abs(minX)
-    extraY = torch.abs(minY)
-    for i in range(G_new.shape[0]):
-        x, y = G_new[i]
-        img[int(x+extraX),int(y+extraY)] = torch.Tensor(color[i])
-    plt.imshow(img)
-    plt.show()
-
-    return img
-
-
+    return G_def[:2,:].T # 2xN, only first 2 rows (x,y)
 
 def zbuffer_approach(G_new):
     G_new = G_new.detach().numpy()
-    bbox = np.min(G_new.T[0]), np.max(G_new.T[0]), np.min(G_new.T[1]), np.max(G_new.T[1])
+    # bbox = np.min(G_new.T[0]), np.max(G_new.T[0]), np.min(G_new.T[1]), np.max(G_new.T[1])
     H = 128
     W = 128
     # divide the bbox in H x W cells
-    hs = np.linspace(bbox[2],bbox[3],H)
-    ws = np.linspace(bbox[0],bbox[1],W)
+    hs = np.linspace(-128,128,H)
+    ws = np.linspace(-128,128,W)
     img_idx = np.zeros((H,W,3),dtype=np.uint8)
 
     # for every point in source, find to which cell of the buffer it belongs, and store index
@@ -193,7 +181,8 @@ def predict_landmarks(img):
 
 def visualize_landmarks(img, landmarks, radius=2):
   new_img = np.copy(img)
-  h, w = new_img.shape
+  print(new_img.shape)
+  h, w, _ = new_img.shape
   for x, y in landmarks:
     x = int(x)
     y = int(y)
@@ -208,51 +197,72 @@ def visualize_landmarks(img, landmarks, radius=2):
 #### LATENT PARAMETERS ESTIMATION
 # person = cv2.imread("oleg.jpg")
 person = cv2.imread("person.jpeg")
+person = cv2.resize(person, (128,128), interpolation = cv2.INTER_AREA)
 person = torch.from_numpy(person)
+
 ground_truth = predict_landmarks(person)
-# visualize_landmarks(person,ground_truth,radius=4)
+# ground_truth = ground_truth - np.array([128/2, 128/2])
+# visualize_landmarks(person,ground_truth)
+
+indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
 
 alpha = torch.autograd.Variable(torch.randn(30,), requires_grad=True)
 delta = torch.autograd.Variable(torch.randn(20,), requires_grad=True)
 omega = torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True)
-# omega = torch.autograd.Variable(torch.randn(3,))
-print(omega)
-t = torch.autograd.Variable(torch.Tensor([0,0,-500]), requires_grad=True)
+t = torch.autograd.Variable(torch.Tensor([50,100,-750]), requires_grad=True)
 optim = torch.optim.Adam([alpha, delta, omega, t], lr=0.02)
 
 old_loss = np.inf
-new_loss = 1000
+new_loss = 10000000
 
-epsilon = 0.001
+epsilon = 1
 i = 0
 while (abs(old_loss - new_loss) > epsilon) and (old_loss > new_loss):
+    torch.autograd.set_detect_anomaly(True)
     old_loss = new_loss
     G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
-    print(alpha)
-    print(delta)
-    print(omega)
-    print(delta)
+
+    G_lm = G[indices_model,:]
+
+    # print(alpha)
+    # print(delta)
+    # print(omega)
+    # print(t)
     # G_new = (omega @ G.T).T + t
-    G_new = (general_rotation(omega) @ G.T).T + t
+    # save_obj("test_tmp_before.obj",G.detach().numpy(),color,triangles)
+    G_new = (general_rotation(omega) @ G_lm.T).T + t
     # print(general_rotation(omega))
-    save_obj("test_tmp.obj",G_new.detach().numpy(),color,triangles)
-    G_2D = convertTo2D(G_new)
+    # save_obj("test_tmp_after.obj",G_new.detach().numpy(),color,triangles)
+    predicted = convertTo2D(G_new)
     # TODO: MAKE IMAGE OF 2D POINTS
-    G_image = zbuffer_approach(G_2D)
-    predicted = predict_landmarks(G_image)
-    predicted = torch.from_numpy(predicted)
+    # G_image = zbuffer_approach(G_2D)
+    # predicted = G_2D[indices_model,:]
+    plt.scatter(predicted[:,0].detach().numpy(), predicted[:,1].detach().numpy(),label="pred")
+    plt.scatter(ground_truth[:,0], ground_truth[:,1],label="gt")
+    plt.legend()
+    plt.show()
+    # visualize_landmarks(person, predicted, radius=1)
+
     print("prediction #",i)
 
     loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth))**2)
+
     lambda_alpha = 0.5
     lambda_delta = 0.5
     loss_reg = lambda_alpha * torch.sum(alpha**2) + lambda_delta * torch.sum(delta**2)
-    print(loss_reg.item())
-    loss_reg.backward()
+
+    loss_fit = loss_lan + loss_reg
+    # print(loss_lan)
+    # print(loss_reg)
+    print(loss_fit.item())
+    optim.zero_grad()
+
+    loss_fit.backward()
+
     optim.step()
 
-    new_loss = loss_reg.item()
-    i += 1
+    new_loss = loss_fit.item()
+    i = i+1
 
 print("alpha", alpha)
 print("delta", delta)
@@ -261,8 +271,8 @@ print("t", t)
 
 G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
-# G_new_def = (omega @ G.T).T + t
-G_new_def = G + t
+G_new_def = (general_rotation(omega) @ G.T).T + t
+# G_new_def = G + t
 
 save_obj("pytorch.obj",G_new_def.detach().numpy(),color,triangles)
 
