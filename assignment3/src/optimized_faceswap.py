@@ -1,4 +1,3 @@
-# mean and std both .5 normalization
 from tkinter import Variable
 import h5py
 import numpy as np
@@ -40,14 +39,11 @@ alpha = np.random.uniform(-1,1,30)
 delta = np.random.uniform(-1,1,20)
 
 G = id_mean + id_pcabasis30 @ (alpha * np.sqrt(id_pcavariance30)) + expr_mean + expr_pcabasis20 @ (delta * np.sqrt(expr_pcavariance20))
-print(G.shape)
+
 color = np.asarray(bfm['color/model/mean'], dtype=np.float32)
 color = np.reshape(color, (-1,3))
 
 triangles = np.asarray(bfm['shape/representer/cells'], dtype=np.float32).T # 3xK
-print(triangles.shape)
-
-print(G)
 
 # MOETEN WE NOG FIXEN MET EEN IMPORT
 def save_obj(file_path, shape, color, triangles):
@@ -69,26 +65,26 @@ def save_obj(file_path, shape, color, triangles):
 
 save_obj('pointcloud.obj',G,color,triangles)
 
-def rotation(theta):
+def rotation_y(theta):
     return np.array([[np.cos(theta), 0, np.sin(theta)],
                      [0, 1, 0],
                      [-np.sin(theta), 0, np.cos(theta)]])
 
-rot10 = rotation(1/36 * np.pi)
-rot_10 = rotation(-1/36 * np.pi)
+def general_rotation(omega):
+    alpha, beta, gamma = omega
+    return torch.Tensor([[torch.cos(alpha)*torch.cos(beta), torch.cos(alpha)*torch.sin(beta)*torch.sin(gamma)-torch.sin(alpha)*torch.cos(gamma), torch.cos(alpha)*torch.sin(beta)*torch.cos(gamma)+torch.sin(alpha)*torch.sin(gamma)],
+                         [torch.sin(alpha)*torch.cos(beta), torch.sin(alpha)*torch.sin(beta)*torch.sin(gamma)+torch.cos(alpha)*torch.cos(gamma), torch.sin(alpha)*torch.sin(beta)*torch.cos(gamma)-torch.cos(alpha)*torch.sin(gamma)],
+                         [-torch.sin(beta), torch.cos(beta)*torch.sin(gamma), torch.cos(beta)*torch.cos(gamma)]])
+
+rot10 = rotation_y(1/36 * np.pi)
+rot_10 = rotation_y(-1/36 * np.pi)
 
 G_rot10 = (rot10 @ G.T).T
-print(G_rot10)
-print(G_rot10.shape)
 G_rot_10 = (rot_10 @ G.T).T
-print(G_rot_10)
-print(G_rot_10.shape)
 
 save_obj('rot10.obj',G_rot10,color,triangles)
 save_obj('rot_10.obj',G_rot_10,color,triangles)
 
-
-# ANGELA
 ## -------------------------- Use pinhole camera model to obtain 2D
 G_new = (rot10 @ G.T).T + np.array([0, 0, -500])
 
@@ -105,9 +101,7 @@ def convertTo2D(G_new):
 
     angleOfView = torch.tensor(90)
     n = torch.tensor(0.1)
-    print(n)
     f = torch.tensor(100)
-    print(f)
     imageAspectRatio = width/ heigth
     scale = torch.tan(angleOfView * 0.5 * torch.pi / 180)*n
     r = imageAspectRatio * scale
@@ -127,21 +121,22 @@ def convertTo2D(G_new):
     G_new[0, :] = G_new[0, :] / G_new[3, :]
     G_new[1, :] = G_new[1, :] / G_new[3, :]
     # G_new = torch.delete(G_new, obj=[2,3], axis=0)
-    return G_new[:2,:] # 2xN
+    return G_new[:2,:].T # 2xN, only first 2 rows (x,y)
 
 
 #TODO: Ask question on how to go from 2D point cloud to image: rounding to integers decreases the resolution
 #How to go from 2xN to an image that is plottable
 def makeImag(G_new):
-    minX = np.amin(G_new[0,:])
-    maxX = np.amax(G_new[0,:])
-    minY = np.amin(G_new[1,:])
-    maxY = np.amax(G_new[1,:])
-    img = np.zeros(shape=(int(maxX-minX)+1, int(maxY-minY)+1))
-    for i in range(G_new.shape[1]):
-        x, y = G_new[:,i]
-        img[int(x+np.abs(minX)),int(y+np.abs(minY))] = 1
-
+    minX = torch.min(G_new[:,0])
+    maxX = torch.max(G_new[:,0])
+    minY = torch.min(G_new[:,1])
+    maxY = torch.max(G_new[:,1])
+    img = torch.zeros((256, 256, 3), dtype=torch.float32)
+    extraX = torch.abs(minX)
+    extraY = torch.abs(minY)
+    for i in range(G_new.shape[0]):
+        x, y = G_new[i]
+        img[int(x+extraX),int(y+extraY)] = torch.Tensor(color[i])
     plt.imshow(img)
     plt.show()
 
@@ -150,19 +145,18 @@ def makeImag(G_new):
 
 
 def zbuffer_approach(G_new):
-    # G_new = G_new.detach().numpy().T
+    G_new = G_new.detach().numpy()
     bbox = np.min(G_new.T[0]), np.max(G_new.T[0]), np.min(G_new.T[1]), np.max(G_new.T[1])
-    H = 600
-    W = 400
+    H = 128
+    W = 128
     # divide the bbox in H x W cells
     hs = np.linspace(bbox[2],bbox[3],H)
     ws = np.linspace(bbox[0],bbox[1],W)
-    img_idx = np.zeros((H,W))
+    img_idx = np.zeros((H,W,3),dtype=np.uint8)
 
     # for every point in source, find to which cell of the buffer it belongs, and store index
     for idx, point in enumerate(G_new):
-        # print(point)
-        x,y, z = point
+        x,y = point
         idxs = [0,0]
         for i, w in enumerate(ws):
             if (i==len(ws)-1 and w < x) or (w < x and ws[i+1] > x):
@@ -171,26 +165,14 @@ def zbuffer_approach(G_new):
             if (j==len(hs)-1 and h < y) or (h < y and hs[j+1] > y):
                 idxs[1] = j
         # if cell is already taken, overwrite if point is closer to xy plane
-        if img_idx[idxs[1],idxs[0]] != 0:
-            cur = G_new[int(img_idx[idxs[1],idxs[0]])]
-            # if np.abs(cur[2]) > np.abs(point[2]):
-            #     img_idx[idxs[1],idxs[0]] = int(idx + 1) # +1 needed to identify when cell is not taken (then it's 0)
-        else:
-            img_idx[idxs[1],idxs[0]] = int(idx + 1)
-
-    img_idx[img_idx > 0] = 1
+        img_idx[idxs[1],idxs[0]] = (color[idx] * 255).astype(np.uint8)
 
     plt.imshow(img_idx)
     plt.show()
 
-    return img_idx
+    return torch.from_numpy(img_idx)
 
-# img_G = zbuffer_approach(G_new)
-
-# _ = zbuffer_approach(G)
-# _ = zbuffer_approach(G_rot10)
-# _ = zbuffer_approach(G_rot_10)
-# G_new_image = zbuffer_approach(G_new)
+# img_G = makeImag(G_new)
 
 # Face Detector
 detector = dlib.get_frontal_face_detector()
@@ -198,7 +180,7 @@ detector = dlib.get_frontal_face_detector()
 predictor = openface.AlignDlib("shape_predictor_68_face_landmarks.dat")
 
 def predict_landmarks(img):
-  img = (img*255).astype('uint8')
+  img = img.detach().numpy()
   dets = detector(img, 1)
   if len(dets) < 1:
     return None # Face Not Found
@@ -207,7 +189,7 @@ def predict_landmarks(img):
   d = dets[0]
   gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
   landmarks = predictor.findLandmarks(gray_img, d)
-  return np.asarray(landmarks)
+  return np.asarray(landmarks, dtype=np.float16)
 
 def visualize_landmarks(img, landmarks, radius=2):
   new_img = np.copy(img)
@@ -226,44 +208,63 @@ def visualize_landmarks(img, landmarks, radius=2):
 #### LATENT PARAMETERS ESTIMATION
 # person = cv2.imread("oleg.jpg")
 person = cv2.imread("person.jpeg")
+person = torch.from_numpy(person)
 ground_truth = predict_landmarks(person)
 # visualize_landmarks(person,ground_truth,radius=4)
 
-alpha = torch.Tensor(torch.randn(30,))
-delta = torch.Tensor(torch.randn(20,))
-omega = torch.Tensor(torch.randn(3,3))
-t = torch.Tensor([0,0,-500])
+alpha = torch.autograd.Variable(torch.randn(30,), requires_grad=True)
+delta = torch.autograd.Variable(torch.randn(20,), requires_grad=True)
+omega = torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True)
+# omega = torch.autograd.Variable(torch.randn(3,))
+print(omega)
+t = torch.autograd.Variable(torch.Tensor([0,0,-500]), requires_grad=True)
 optim = torch.optim.Adam([alpha, delta, omega, t], lr=0.02)
 
-for i in range(10):
+old_loss = np.inf
+new_loss = 1000
+
+epsilon = 0.001
+i = 0
+while (abs(old_loss - new_loss) > epsilon) and (old_loss > new_loss):
+    old_loss = new_loss
     G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
-
-    G_new = (omega @ G.T).T + t
-
+    print(alpha)
+    print(delta)
+    print(omega)
+    print(delta)
+    # G_new = (omega @ G.T).T + t
+    G_new = (general_rotation(omega) @ G.T).T + t
+    # print(general_rotation(omega))
+    save_obj("test_tmp.obj",G_new.detach().numpy(),color,triangles)
     G_2D = convertTo2D(G_new)
     # TODO: MAKE IMAGE OF 2D POINTS
     G_image = zbuffer_approach(G_2D)
     predicted = predict_landmarks(G_image)
-    print("prediction #",i, predicted)
+    predicted = torch.from_numpy(predicted)
+    print("prediction #",i)
 
-    loss_lan = torch.mean(torch.linalg.norm(predicted - ground_truth)**2)
+    loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth))**2)
     lambda_alpha = 0.5
     lambda_delta = 0.5
     loss_reg = lambda_alpha * torch.sum(alpha**2) + lambda_delta * torch.sum(delta**2)
-
+    print(loss_reg.item())
     loss_reg.backward()
     optim.step()
+
+    new_loss = loss_reg.item()
+    i += 1
 
 print("alpha", alpha)
 print("delta", delta)
 print("omega", omega)
 print("t", t)
 
-G_def = id_mean + id_pcabasis30 @ (alpha * np.sqrt(id_pcavariance30)) + expr_mean + expr_pcabasis20 @ (delta * np.sqrt(expr_pcavariance20))
+G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
-G_new_def = (omega @ G.T).T + t
+# G_new_def = (omega @ G.T).T + t
+G_new_def = G + t
 
-save_obj("pytorch.obj",G_new_def,color,triangles)
+save_obj("pytorch.obj",G_new_def.detach().numpy(),color,triangles)
 
 
 
