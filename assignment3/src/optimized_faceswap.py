@@ -97,9 +97,12 @@ save_obj('rot_10.obj',G_rot_10,color,triangles)
 G_new = (rot10 @ G.T).T + np.array([0, 0, -500])
 
 def convertTo2D(G_new):
-    width = torch.max(G_new[:,0]) - torch.min(G_new[:,0])
-    heigth = torch.max(G_new[:,1]) - torch.min(G_new[:,1])
-    depth = torch.max(G_new[:,2]) - torch.min(G_new[:,2])
+    # width = torch.max(G_new[:,0]) - torch.min(G_new[:,0])
+    # heigth = torch.max(G_new[:,1]) - torch.min(G_new[:,1])
+    # depth = torch.max(G_new[:,2]) - torch.min(G_new[:,2])
+    width = 128
+    heigth = 128
+    depth = 1/2
 
     # Source: https://www3.ntu.edu.sg/home/ehchua/programming/opengl/CG_BasicsTheory.html
     V = torch.Tensor([[width/2, 0, 0, torch.min(G_new[:,0])+width/2],
@@ -111,7 +114,9 @@ def convertTo2D(G_new):
     n = torch.tensor(0.1)
     f = torch.tensor(100)
     imageAspectRatio = width/ heigth
-    scale = torch.tan(angleOfView * 0.5 * torch.pi / 180)*n
+    # scale = torch.tan(angleOfView * 0.5 * torch.pi / 180)*n
+    fov_y = torch.tensor(0.5)
+    scale = torch.tan(fov_y/2)*n
     r = imageAspectRatio * scale
     l = -r
     t =  scale
@@ -131,6 +136,36 @@ def convertTo2D(G_new):
     G_def[1, :] = G_new[1, :] / G_new[3, :]
     # G_new = torch.delete(G_new, obj=[2,3], axis=0)
     return G_def[:2,:].T # 2xN, only first 2 rows (x,y)
+
+def convertTo2D_version2(G_new):
+    vec = torch.ones((G_new.shape[0],1))
+    G_conv = torch.cat((G_new,vec),1)
+    n = torch.tensor(0.1)
+    f = torch.tensor(100)
+    W = 128
+    H = 128
+    fov_y = torch.tensor(0.5)
+
+    aspect = W/H
+
+    t = torch.tan(fov_y/2)*n
+    b = -t
+    r = t * aspect
+    l = -t*aspect
+
+    P = torch.Tensor([[2*n/(r-l), 0, (r+1)/(r-1), 0],
+                [0, 2*n/(t-b), (t+b)/(t-b), 0],
+                [0, 0, -(f+n)/(f-n), -2*f*n/(f-n)],
+                [0, 0, -1, 0]])
+
+    V = torch.Tensor([[(r-l)/2, 0, 0, (r+l)/2],
+                      [0, (t-b)/2, 0, (t+b)/2],
+                      [0, 0, 1/2, 1/2],
+                      [0, 0, 0, 1]])
+
+    PI = V.T @ P
+    tmp = G_conv @ PI
+    return (tmp[:,:2].T / tmp[:,3]).T
 
 def zbuffer_approach(G_new):
     G_new = G_new.detach().numpy()
@@ -196,12 +231,15 @@ def visualize_landmarks(img, landmarks, radius=2):
 
 #### LATENT PARAMETERS ESTIMATION
 # person = cv2.imread("oleg.jpg")
+# print(person.shape)
+# print("SHAPE")
 person = cv2.imread("person.jpeg")
-person = cv2.resize(person, (128,128), interpolation = cv2.INTER_AREA)
+print(person.shape)
+# person = cv2.resize(person, (128,128), interpolation = cv2.INTER_AREA)
 person = torch.from_numpy(person)
 
 ground_truth = predict_landmarks(person)
-# ground_truth = ground_truth - np.array([128/2, 128/2])
+ground_truth = ground_truth - np.array([person.shape[0]/2, person.shape[0]/2])
 # visualize_landmarks(person,ground_truth)
 
 indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
@@ -209,16 +247,16 @@ indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
 alpha = torch.autograd.Variable(torch.randn(30,), requires_grad=True)
 delta = torch.autograd.Variable(torch.randn(20,), requires_grad=True)
 omega = torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True)
-t = torch.autograd.Variable(torch.Tensor([50,100,-750]), requires_grad=True)
-optim = torch.optim.Adam([alpha, delta, omega, t], lr=0.02)
+t = torch.autograd.Variable(torch.Tensor([0,0,-250]), requires_grad=True)
+optim = torch.optim.Adam([alpha, delta, omega, t], lr=0.05)
 
 old_loss = np.inf
 new_loss = 10000000
 
-epsilon = 1
+epsilon = 0.0001
 i = 0
-while (abs(old_loss - new_loss) > epsilon) and (old_loss > new_loss):
-    torch.autograd.set_detect_anomaly(True)
+while (abs(old_loss - new_loss) > epsilon):
+    optim.zero_grad()
     old_loss = new_loss
     G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
@@ -234,13 +272,15 @@ while (abs(old_loss - new_loss) > epsilon) and (old_loss > new_loss):
     # print(general_rotation(omega))
     # save_obj("test_tmp_after.obj",G_new.detach().numpy(),color,triangles)
     predicted = convertTo2D(G_new)
+    # print(len(predicted[:,0]))
     # TODO: MAKE IMAGE OF 2D POINTS
     # G_image = zbuffer_approach(G_2D)
     # predicted = G_2D[indices_model,:]
-    plt.scatter(predicted[:,0].detach().numpy(), predicted[:,1].detach().numpy(),label="pred")
-    plt.scatter(ground_truth[:,0], ground_truth[:,1],label="gt")
-    plt.legend()
-    plt.show()
+    if i == 0 or i == 10000:
+        plt.scatter(predicted[:,0].detach().numpy(), predicted[:,1].detach().numpy(),label="pred")
+        plt.scatter(ground_truth[:,0], ground_truth[:,1],label="gt")
+        plt.legend()
+        plt.show()
     # visualize_landmarks(person, predicted, radius=1)
 
     print("prediction #",i)
@@ -255,7 +295,7 @@ while (abs(old_loss - new_loss) > epsilon) and (old_loss > new_loss):
     # print(loss_lan)
     # print(loss_reg)
     print(loss_fit.item())
-    optim.zero_grad()
+    
 
     loss_fit.backward()
 
