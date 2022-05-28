@@ -11,11 +11,12 @@ import cv2
 import utils
 import img_utils
 
+
 # Configurations
 ######################################################################
 # Fill in your experiment names and the other required components
 experiment_name = 'Blender'
-data_root = ''
+data_root = '/content/gdrive/MyDrive/CV_2/data_set/data'
 train_list = ''
 test_list = ''
 batch_size = 8
@@ -77,20 +78,57 @@ print('[I] STATUS: Load Networks...', end='')
 # definition. Make sure you transfer them to the proper training device. Hint:
 # use the .to(device) function, where device is automatically detected
 # above.
+from discriminators_pix2pix import MultiscaleDiscriminator
+from res_unet import MultiScaleResUNet
+from utils import loadModels
+
+pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
+
+discriminator = MultiscaleDiscriminator().to(device)
+generator = MultiScaleResUNet(in_nc=7, out_nc=3).to(device)
+
+discriminator, discrim_optim_state, checkpoint_iters = loadModels(discriminator, os.path.join(pre_trained_models_path, 'checkpoint_D.pth'))
+generator, gen_optim_state, checkpoint_iters = loadModels(generator, os.path.join(pre_trained_models_path, 'checkpoint_G.pth'))
+
 print(done)
 
 print('[I] STATUS: Initiate optimizer...', end='')
 # Define your optimizers and the schedulers and connect the networks from
 # before
+optimizer_G = torch.optim.SGD(lr=1e-4, momentum=0.9, weight_decay=1e-4)
+scheduler_G = torch.optim.lr_scheduler.StepLR(optimizer_G, step_size=30, gamma=0.1)
+
+optimizer_D = torch.optim.SGD(lr=1e-4, momentum=0.9, weight_decay=1e-4)
+scheduler_D = torch.optim.lr_scheduler.StepLR(optimizer_D, step_size=30, gamma=0.1)
+# if gen_optim_state is not None:
+#     optimizer_G.load_state_dict(gen_optim_state)
+#     optimizer_G_state = None
+# if discrim_optim_state is not None:
+#     optimizer_D.load_state_dict(discrim_optim_state)
+#     optimizer_D_state = None
 print(done)
 
 print('[I] STATUS: Initiate Criterions and transfer to device...', end='')
 # Define your criterions here and transfer to the training device. They need to
 # be on the same device type.
+from gan_loss import GANLoss
+criterion_gan = GANLoss(use_lsgan=True)
 print(done)
 
 print('[I] STATUS: Initiate Dataloaders...')
 # Initialize your datasets here
+
+#               val_dataset=None,
+from ..datasets.img_landmarks_transforms import ToTensor, Compose
+from torchvision import transforms
+numpy_transforms = None
+tensor_transforms = (ToTensor(), transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])),
+img_transforms = Compose(numpy_transforms + tensor_transforms)
+
+from ..datasets.opencv_video_seq_dataset import VideoSeqDataset
+train_dataset = VideoSeqDataset(transform=img_transforms)
+# if val_dataset is not None:
+#     val_dataset = VideoSeqDataset(transform=img_transforms)
 print(done)
 
 print('[I] STATUS: Initiate Logs...', end='')
@@ -103,7 +141,7 @@ def transfer_mask(img1, img2, mask):
 
 
 def blend_imgs_bgr(source_img, target_img, mask):
-    # Implement poisson blending here. You can us the built-in seamlessclone
+    # Implement poisson blending here. You can use the built-in seamlessClone
     # function in opencv which is an implementation of Poisson Blending.
     a = np.where(mask != 0)
     if len(a[0]) == 0 or len(a[1]) == 0:
