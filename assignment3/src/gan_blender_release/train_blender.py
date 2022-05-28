@@ -70,6 +70,15 @@ else:
 done = u'\u2713'
 print('[I] STATUS: Initiate Network and transfer to device...', end='')
 # Define your generators and Discriminators here
+from discriminators_pix2pix import MultiscaleDiscriminator
+from res_unet import MultiScaleResUNet
+from utils import loadModels
+
+# pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
+pre_trained_models_path = '../../data_set/Pretrained_model'
+
+discriminator = MultiscaleDiscriminator().to(device)
+generator = MultiScaleResUNet(in_nc=7, out_nc=3).to(device)
 print(done)
 
 print('[I] STATUS: Load Networks...', end='')
@@ -78,34 +87,30 @@ print('[I] STATUS: Load Networks...', end='')
 # definition. Make sure you transfer them to the proper training device. Hint:
 # use the .to(device) function, where device is automatically detected
 # above.
-from discriminators_pix2pix import MultiscaleDiscriminator
-from res_unet import MultiScaleResUNet
-from utils import loadModels
 
-pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
-
-discriminator = MultiscaleDiscriminator().to(device)
-generator = MultiScaleResUNet(in_nc=7, out_nc=3).to(device)
-
-discriminator, discrim_optim_state, checkpoint_iters = loadModels(discriminator, os.path.join(pre_trained_models_path, 'checkpoint_D.pth'))
-generator, gen_optim_state, checkpoint_iters = loadModels(generator, os.path.join(pre_trained_models_path, 'checkpoint_G.pth'))
+discriminator, discrim_optim_state, checkpoint_iters_d = loadModels(discriminator,
+                                                                  os.path.join(pre_trained_models_path, 'checkpoint_D.pth'),
+                                                                  device=device)
+generator, gen_optim_state, checkpoint_iters_g = loadModels(generator,
+                                                          os.path.join(pre_trained_models_path, 'checkpoint_G.pth'),
+                                                          device=device)
 
 print(done)
 
 print('[I] STATUS: Initiate optimizer...', end='')
 # Define your optimizers and the schedulers and connect the networks from
 # before
-optimizer_G = torch.optim.SGD(lr=1e-4, momentum=0.9, weight_decay=1e-4)
+optimizer_G = torch.optim.SGD(generator.parameters(), lr=1e-4, momentum=0.9, weight_decay=1e-4)
 scheduler_G = torch.optim.lr_scheduler.StepLR(optimizer_G, step_size=30, gamma=0.1)
 
-optimizer_D = torch.optim.SGD(lr=1e-4, momentum=0.9, weight_decay=1e-4)
+optimizer_D = torch.optim.SGD(discriminator.parameters(), lr=1e-4, momentum=0.9, weight_decay=1e-4)
 scheduler_D = torch.optim.lr_scheduler.StepLR(optimizer_D, step_size=30, gamma=0.1)
-# if gen_optim_state is not None:
-#     optimizer_G.load_state_dict(gen_optim_state)
-#     optimizer_G_state = None
-# if discrim_optim_state is not None:
-#     optimizer_D.load_state_dict(discrim_optim_state)
-#     optimizer_D_state = None
+if gen_optim_state is not None:
+    optimizer_G.load_state_dict(gen_optim_state)
+    optimizer_G_state = None
+if discrim_optim_state is not None:
+    optimizer_D.load_state_dict(discrim_optim_state)
+    optimizer_D_state = None
 print(done)
 
 print('[I] STATUS: Initiate Criterions and transfer to device...', end='')
@@ -118,15 +123,15 @@ print(done)
 print('[I] STATUS: Initiate Dataloaders...')
 # Initialize your datasets here
 
-#               val_dataset=None,
-from ..datasets.img_landmarks_transforms import ToTensor, Compose
-from torchvision import transforms
-numpy_transforms = None
-tensor_transforms = (ToTensor(), transforms.Normalize(mean=[0.5,0.5,0.5],std=[0.5,0.5,0.5])),
-img_transforms = Compose(numpy_transforms + tensor_transforms)
+# from ..datasets.img_landmarks_transforms import ToTensor, Compose
+# from torchvision import transforms
+# numpy_transforms = None
+# tensor_transforms = (ToTensor(), transforms.Normalize(mean=[0.5,0.5,0.5], std=[0.5,0.5,0.5])),  # applied during loading
+# img_transforms = Compose(numpy_transforms + tensor_transforms)
 
-from ..datasets.opencv_video_seq_dataset import VideoSeqDataset
-train_dataset = VideoSeqDataset(transform=img_transforms)
+from SwappedDataset import SwappedDatasetLoader
+data_root = '../../data_set/data_set/data'
+train_dataset = SwappedDatasetLoader(data_root, transform=None)
 # if val_dataset is not None:
 #     val_dataset = VideoSeqDataset(transform=img_transforms)
 print(done)
@@ -137,6 +142,7 @@ print(done)
 
 
 def transfer_mask(img1, img2, mask):
+    # face reenacted to the background face without face
     return img1 * mask + img2 * (1 - mask)
 
 
@@ -168,7 +174,7 @@ def blend_imgs(source_tensor, target_tensor, mask_tensor):
     return torch.cat(out_tensors, dim=0)
 
 
-def Train(G, D, epoch_count, iter_count):
+def Train(trainLoader, G, D, epoch_count, iter_count):
     G.train(True)
     D.train(True)
     epoch_count += 1
@@ -189,6 +195,7 @@ def Train(G, D, epoch_count, iter_count):
         # 6) Perform the optimizer step.
 
         if iter_count % displayIter == 0:
+            pass
         # Write to the log file.
 
         # Print out the losses here. Tqdm uses that to automatically print it
@@ -249,8 +256,38 @@ print('\tVisuals Dumped at: ', visuals_loc)
 print('\tExperiment Name: ', experiment_name)
 
 for i in range(max_epochs):
-# Call the Train function here
-# Step through the schedulers if using them.
-# You can also print out the losses of the network here to keep track of
-# epoch wise loss.
+    total_loss = proces_epoch(train_loader, train=True)
+    if val_loader is not None:
+        with torch.no_grad():
+            total_loss = proces_epoch(val_loader, train=False)
+
+    # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
+    if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+        scheduler_G.step(total_loss)
+        scheduler_D.step(total_loss)
+    else:
+        scheduler_G.step()
+        scheduler_D.step()
+
+    # Save models checkpoints
+    is_best = total_loss < best_loss
+    best_loss = min(best_loss, total_loss)
+    utils.save_checkpoint(exp_dir, 'Gb', {
+        'resolution': res,
+        'epoch': epoch + 1,
+        'state_dict': Gb.module.state_dict() if gpus and len(gpus) > 1 else Gb.state_dict(),
+        'optimizer': optimizer_G.state_dict(),
+        'best_loss': best_loss,
+    }, is_best)
+    utils.save_checkpoint(exp_dir, 'D', {
+        'resolution': res,
+        'epoch': epoch + 1,
+        'state_dict': D.module.state_dict() if gpus and len(gpus) > 1 else D.state_dict(),
+        'optimizer': optimizer_D.state_dict(),
+        'best_loss': best_loss,
+    }, is_best)
+    # Call the Train function here
+    # Step through the schedulers if using them.
+    # You can also print out the losses of the network here to keep track of
+    # epoch wise loss.
 trainLogger.close()

@@ -21,8 +21,8 @@ def saveModels(model, optims, iterations, path):
         }
     torch.save(checkpoint, path)
 
-def loadModels(model, path, optims=None, Test=True):
-    checkpoint = torch.load(path)
+def loadModels(model, path, device=None, optims=None, Test=True):
+    checkpoint = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint['model'])
     if not Test:
         optims.load_state_dict(checkpoint['optimizer'])
