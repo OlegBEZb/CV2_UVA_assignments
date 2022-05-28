@@ -141,7 +141,7 @@ def convertTo2D_version2(G_new):
     vec = torch.ones((G_new.shape[0],1))
     G_conv = torch.cat((G_new,vec),1)
     n = torch.tensor(0.1)
-    f = torch.tensor(100)
+    f = torch.tensor(10)
     W = 128
     H = 128
     fov_y = torch.tensor(0.5)
@@ -226,10 +226,93 @@ def visualize_landmarks(img, landmarks, radius=2):
   plt.axis(False)
   plt.show()
 
+def render(uvz, color, triangles, H=480, W=640):
+    """ Renders an image of size WxH given u, v, z vertex coordinates, vertex color and triangle topology.
+    
+    uvz - matrix of shape Nx3, where N is an amount of vertices
+    color - matrix of shape Nx3, where N is an amount of vertices, 3 channels represent R,G,B color scaled from 0 to 1
+    triangles - matrix of shape Mx3, where M is an amount of triangles, each column represents a vertex index
+    """
+
+    assert len(uvz.shape) == 2
+    assert len(color.shape) == 2
+    assert len(triangles.shape) == 2
+    assert uvz.shape[1] == color.shape[1] == triangles.shape[1] == 3
+    assert np.min(triangles) == 0
+    assert np.max(triangles) < uvz.shape[0]
+
+    def bbox(v0, v1, v2):
+        u_min = int(max(0, np.floor(min(v0[0], v1[0], v2[0]))))
+        u_max = int(min(W - 1, np.ceil(max(v0[0], v1[0], v2[0]))))
+
+        v_min = int(max(0, np.floor(min(v0[1], v1[1], v2[1]))))
+        v_max = int(min(H - 1, np.ceil(max(v0[1], v1[1], v2[1]))))
+
+        return u_min, u_max, v_min, v_max
+
+    def cross_product(a, b):
+        return a[0] * b[1] - b[0] * a[1]
+
+    p = np.zeros([3])
+
+    z_buffer = -np.ones([H, W]) * 100500
+
+    image = np.zeros([H, W, 3])
+
+    for triangle in triangles:
+        id0, id1, id2 = triangle
+        v0 = uvz[id0]
+        v1 = uvz[id1]
+        v2 = uvz[id2]
+        v02 = v2 - v0
+        v01 = v1 - v0
+
+        u_min, u_max, v_min, v_max = bbox(v0, v1, v2)
+
+        # double triangle signed area
+        tri_a = cross_product(v1 - v0, v2 - v0)
+        for v in range(v_min, v_max + 1):
+            p[1] = v
+            for u in range(u_min, u_max + 1):
+                p[0] = u
+
+                v0p = p - v0
+
+                b1 = cross_product(v0p, v02) / tri_a
+                b2 = cross_product(v01, v0p) / tri_a
+                if (b1 < 0) or (b2 < 0) or (b1 + b2 > 1):
+                    continue
+                
+                b0 = 1 - b1 - b2
+                p[2] = b0 * v0[2] + b1 * v1[2] + b2 * v2[2]
+
+                if p[2] > z_buffer[v, u]:
+                    z_buffer[v, u] = p[2]
+                    image[v, u] = b0 * color[id0] + b1 * color[id1] + b2 * color[id2]
+    
+    return image
+
+def texturing(G, color, triangles):
+    G = G.astype(int)
+    x_min = np.min(G[:,0])
+    G[:,1] = -G[:,1]    # flip the y-axis
+    y_min = np.min(G[:,1])
+
+    # translate the image to have all positive indices
+    G[:,0] += -x_min
+    G[:,1] += -y_min
+
+    width = int(np.ceil(np.array(np.max(G[:,0]) - np.min(G[:,0]))))
+    height = int(np.ceil(np.array(np.max(G[:,1]) - np.min(G[:,1]))))
+
+    image = render(G, color, triangles.astype(int), H=height, W=width)
+    return image
+
+
 # landmarks = predict_landmarks(img_G)
 # visualize_landmarks(img_G, landmarks, 4)
 
-#### LATENT PARAMETERS ESTIMATION
+### LATENT PARAMETERS ESTIMATION
 # person = cv2.imread("oleg.jpg")
 # print(person.shape)
 # print("SHAPE")
@@ -239,21 +322,27 @@ print(person.shape)
 person = torch.from_numpy(person)
 
 ground_truth = predict_landmarks(person)
-ground_truth = ground_truth - np.array([person.shape[0]/2, person.shape[0]/2])
-# visualize_landmarks(person,ground_truth)
+# visualize_landmarks(person,ground_truth,radius=10)
+
+x_translate = np.min(ground_truth[:,0]) + (np.max(ground_truth[:,0]) - np.min(ground_truth[:,0]))/2
+y_translate = np.min(ground_truth[:,1]) + (np.max(ground_truth[:,1]) - np.min(ground_truth[:,1]))/2
+ground_truth = ground_truth - np.array([x_translate, y_translate])
+
+# ground_truth = ground_truth - np.array([person.shape[0]/2, person.shape[0]/2])
+
 
 indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
 
 alpha = torch.autograd.Variable(torch.randn(30,), requires_grad=True)
 delta = torch.autograd.Variable(torch.randn(20,), requires_grad=True)
 omega = torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True)
-t = torch.autograd.Variable(torch.Tensor([0,0,-250]), requires_grad=True)
+t = torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True)
 optim = torch.optim.Adam([alpha, delta, omega, t], lr=0.05)
 
 old_loss = np.inf
 new_loss = 10000000
 
-epsilon = 0.0001
+epsilon = 0.00001
 i = 0
 while (abs(old_loss - new_loss) > epsilon):
     optim.zero_grad()
@@ -276,11 +365,11 @@ while (abs(old_loss - new_loss) > epsilon):
     # TODO: MAKE IMAGE OF 2D POINTS
     # G_image = zbuffer_approach(G_2D)
     # predicted = G_2D[indices_model,:]
-    if i == 0 or i == 10000:
-        plt.scatter(predicted[:,0].detach().numpy(), predicted[:,1].detach().numpy(),label="pred")
-        plt.scatter(ground_truth[:,0], ground_truth[:,1],label="gt")
-        plt.legend()
-        plt.show()
+    # if i == 0 or i == 5000:
+    #     plt.scatter(predicted[:,0].detach().numpy(), -predicted[:,1].detach().numpy(),label="pred")
+    #     plt.scatter(ground_truth[:,0], -ground_truth[:,1],label="gt")
+    #     plt.legend()
+    #     plt.show()
     # visualize_landmarks(person, predicted, radius=1)
 
     print("prediction #",i)
@@ -292,10 +381,7 @@ while (abs(old_loss - new_loss) > epsilon):
     loss_reg = lambda_alpha * torch.sum(alpha**2) + lambda_delta * torch.sum(delta**2)
 
     loss_fit = loss_lan + loss_reg
-    # print(loss_lan)
-    # print(loss_reg)
     print(loss_fit.item())
-    
 
     loss_fit.backward()
 
@@ -303,6 +389,7 @@ while (abs(old_loss - new_loss) > epsilon):
 
     new_loss = loss_fit.item()
     i = i+1
+    break
 
 print("alpha", alpha)
 print("delta", delta)
@@ -311,10 +398,14 @@ print("t", t)
 
 G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
-G_new_def = (general_rotation(omega) @ G.T).T + t
+G_new_def = (general_rotation(omega) @ G_def.T).T + t
 # G_new_def = G + t
 
 save_obj("pytorch.obj",G_new_def.detach().numpy(),color,triangles)
+
+image = texturing(G_new_def.detach().numpy(), color, triangles)
+plt.imshow(image)
+plt.show()
 
 
 
