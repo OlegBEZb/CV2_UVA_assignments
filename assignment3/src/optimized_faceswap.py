@@ -389,7 +389,6 @@ while (abs(old_loss - new_loss) > epsilon):
 
     new_loss = loss_fit.item()
     i = i+1
-    break
 
 print("alpha", alpha)
 print("delta", delta)
