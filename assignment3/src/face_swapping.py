@@ -292,10 +292,6 @@ def texturing(G, color, triangles, shape):
     image = render(G, color, triangles.astype(int), H=height, W=width)
     return image
 
-
-# landmarks = predict_landmarks(img_G)
-# visualize_landmarks(img_G, landmarks, 4)
-
 ### LATENT PARAMETERS ESTIMATION
 fg = cv2.imread("cropped_fg.png")
 bg = cv2.imread("cropped_bg.png")
@@ -337,7 +333,7 @@ def optimize_geometry(ground_truth_landmarks, file_name):
         G_lm = G[indices_model,:]
         G_new = (general_rotation(omega) @ G_lm.T).T + t
         predicted = convertTo2D(G_new)
-    
+
         loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth_landmarks))**2)
 
         lambda_alpha = 0.5
@@ -355,11 +351,103 @@ def optimize_geometry(ground_truth_landmarks, file_name):
         i = i+1
         break
 
-    # G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
-    G_new_def = (general_rotation(omega) @ G.T).T + t
+    G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+    G_new_def = (general_rotation(omega) @ G_def.T).T + t
     save_obj(f"{file_name}.obj",G_new_def.detach().numpy(),color,triangles)
 
     return G_new_def, alpha, delta, omega, t
+
+def optimized_geometry_video(video_path):
+    vidcap = cv2.VideoCapture(video_path)
+    success,image = vidcap.read()
+    count = 1
+    while success:
+        cv2.imwrite("frame%d.jpg" % count, image)  # save frame as JPEG file
+        success,image = vidcap.read()
+        print('Read a new frame: ', success)
+        count += 1
+
+    frames = []
+    for no in range(count):
+        frame = cv2.imread("frame%d.jpg" % no)
+        frame = torch.from_numpy(frame)
+        frames.append(frame)
+
+    ground_truths = []
+    for frame in frames:
+        ground_truths.append(find_ground_truth_landmarks(frame))
+
+    indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
+    alpha = [torch.autograd.Variable(torch.randn(30,), requires_grad=True)]
+    deltas = []
+    omegas = []
+    ts = []
+    for no in range(count):
+        deltas.append(torch.autograd.Variable(torch.randn(20,), requires_grad=True))
+        omegas.append(torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True))
+        ts.append(torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True))
+    optim = torch.optim.Adam(alpha + deltas + omegas + ts, lr=0.05)
+
+    old_loss = np.inf
+    new_loss = 10000000
+
+    epsilon = 0.00001
+    j = 0
+    while (abs(old_loss - new_loss) > epsilon):
+        print("prediction #",j)
+
+        optim.zero_grad()
+        old_loss = new_loss
+
+        losses = torch.zeros(count)
+        for i in range(count):
+            G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha[0] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+
+            G_lm = G[indices_model,:]
+
+            G_new = (general_rotation(omegas[i]) @ G_lm.T).T + ts[i]
+            predicted = convertTo2D(G_new)
+
+            loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truths[i]))**2)
+
+            lambda_alpha = 1
+            lambda_delta = 1
+            loss_reg = lambda_alpha * torch.sum(alpha[0]**2) + lambda_delta * torch.sum(deltas[i]**2)
+
+            loss_fit = loss_lan + loss_reg
+
+            losses[i] = loss_fit
+
+        loss_combi = torch.mean(torch.Tensor(losses))
+        print(loss_combi.item())
+        loss_combi.backward()
+
+        optim.step()
+
+        new_loss = loss_combi.item()
+        j = j+1
+
+    return alpha, deltas, omegas, ts
+
+def faceswap_video(bg_video_path, fg_image_path):
+    bg_alpha, bg_deltas, bg_omegas, bg_ts = optimized_geometry_video(bg_video_path)
+    fg_img = cv2.imread(fg_image_path)
+    fg_img  = torch.from_numpy(fg_img)
+    fg_ground_truth = find_ground_truth_landmarks(fg_img)
+
+    fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg_image")
+
+    all_images = []
+    for delta, omega, t in zip(bg_deltas, bg_omegas, bg_ts):
+
+
+
+    out = cv2.VideoWriter('project.avi',cv2.VideoWriter_fourcc(*'DIVX'), 15, size)
+
+    for i in range(len(img_array)):
+        out.write(img_array[i])
+    out.release()
+
 
 fg_G, fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg")
 bg_G, bg_alpha, bg_delta, bg_omega, bg_t = optimize_geometry(bg_ground_truth, "bg")

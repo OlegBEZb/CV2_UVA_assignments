@@ -292,7 +292,7 @@ def render(uvz, color, triangles, H=480, W=640):
     
     return image
 
-def texturing(G, color, triangles):
+def texturing(G, color, triangles, shape):
     G = G.astype(int)
     x_min = np.min(G[:,0])
     G[:,1] = -G[:,1]    # flip the y-axis
@@ -302,8 +302,10 @@ def texturing(G, color, triangles):
     G[:,0] += -x_min
     G[:,1] += -y_min
 
-    width = int(np.ceil(np.array(np.max(G[:,0]) - np.min(G[:,0]))))
-    height = int(np.ceil(np.array(np.max(G[:,1]) - np.min(G[:,1]))))
+    # width = int(np.ceil(np.array(np.max(G[:,0]) - np.min(G[:,0]))))
+    # height = int(np.ceil(np.array(np.max(G[:,1]) - np.min(G[:,1]))))
+
+    width, height, _ = shape
 
     image = render(G, color, triangles.astype(int), H=height, W=width)
     return image
@@ -322,10 +324,13 @@ def texturing(G, color, triangles):
 # person = torch.from_numpy(person)
 
 ### MULTIPLE FRAMES
-M = 3
+M = 1
 persons = []
 for i in range(M):
-    person = cv2.imread(f"img{i+1}.jpg")
+    # person = cv2.imread(f"img{i+1}.jpg")
+    person = cv2.imread("person2.jpeg")
+    person = cv2.resize(person, (128,128), interpolation = cv2.INTER_AREA)
+    shape_jongetje = person.shape
     person = torch.from_numpy(person)
     persons.append(person)
 
@@ -374,18 +379,24 @@ while (abs(old_loss - new_loss) > epsilon):
 
         loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truths[i]))**2)
 
-        lambda_alpha = 0.5
-        lambda_delta = 0.5
+        lambda_alpha = 1
+        lambda_delta = 1
         loss_reg = lambda_alpha * torch.sum(alphas[i]**2) + lambda_delta * torch.sum(deltas[i]**2)
 
         loss_fit = loss_lan + loss_reg
 
         losses[i] = loss_fit
 
-    # print(loss_fit.item())
+    if j == 0 or j == 15000:
+        predicted = predicted.detach().numpy()
+        # gt = ground_truths[0].detach().numpy()
+        plt.scatter(predicted[:,0],predicted[:,1],label="predicted")
+        plt.scatter(ground_truths[0][:,0], ground_truths[0][:,1], label="gt")
+        plt.legend()
+        plt.show()
 
     loss_combi = torch.mean(torch.Tensor(losses))
-
+    print(loss_combi.item())
     loss_combi.backward()
 
     optim.step()
@@ -406,11 +417,12 @@ for i in range(M):
 
     save_obj(f"model{i+1}.obj",G_new_def.detach().numpy(),color,triangles)
 
-    image = texturing(G_new_def.detach().numpy(), color, triangles)
+    image = texturing(G_new_def.detach().numpy(), color, triangles, shape_jongetje)
     textured_images.append(image)
 
 for img in textured_images:
     plt.imshow(img)
+    plt.imsave("test.jpg", img)
     plt.show()
 
 
