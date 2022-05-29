@@ -19,7 +19,7 @@ data_root = '/content/gdrive/MyDrive/CV_2/data_set/data'
 train_list = ''
 test_list = ''
 batch_size = 8
-nthreads = 4
+nthreads = 1
 max_epochs = 20
 displayIter = 20
 saveIter = 1
@@ -142,9 +142,9 @@ from SwappedDataset import SwappedDatasetLoader
 
 data_root = '../../data_set/data_set/data'
 train_loader = SwappedDatasetLoader(data_root, transform=None)  # global variables is all you need
-from torch.utils.data import DataLoader
 
-train_loader = DataLoader(train_loader, batch_size=32, shuffle=True, num_workers=1,
+from torch.utils.data import DataLoader
+train_loader = DataLoader(train_loader, batch_size=batch_size, shuffle=True, num_workers=nthreads,
                           pin_memory=True, drop_last=True)
 # if val_dataset is not None:
 #     val_dataset = VideoSeqDataset(transform=img_transforms)
@@ -175,12 +175,12 @@ def blend_imgs_bgr(source_img, target_img, mask):
     return output
 
 
-def blend_imgs(source_tensor, target_tensor, mask_tensor):
+def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_tensor: torch.Tensor):
     out_tensors = []
     for b in range(source_tensor.shape[0]):
         source_img = img_utils.tensor2bgr(source_tensor[b])
         target_img = img_utils.tensor2bgr(target_tensor[b])
-        mask = mask_tensor[b].permute(1, 2, 0).cpu().numpy()
+        mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
         mask = np.round(mask * 255).astype('uint8')
         out_bgr = blend_imgs_bgr(source_img, target_img, mask)
         out_tensors.append(img_utils.bgr2tensor(out_bgr))
@@ -204,15 +204,25 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
         # Implement your training loop here. images will be the datastructure
         # being returned from your dataloader.
         # 1) Load and transfer data to device
-        source, target, swap, mask = data['source'], data['target'], data['swap'], data['mask']
+        source, target, swap, mask = data['source'].squeeze(), data['target'].squeeze(), data['swap'].squeeze(), data['mask'].squeeze()
+        print('source.shape', source.shape, source.type())
         img_transfer = transfer_mask(source, target, mask)
-        img_blend = img_utils.bgr2tensor(blend_imgs_bgr(source, target, mask)).to(device)
-        img_transfer_input = torch.cat((img_transfer, target, mask), dim=1)
+        print('img_transfer.shape', img_transfer.shape, img_transfer.type())
+        img_blend = blend_imgs(source, target, mask)
+        print('img_blend.shape', img_blend.shape)
+
+        print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask.shape, mask.type())
+        img_transfer_input = torch.cat((img_transfer, target, mask), dim=2)
+        print('img_transfer_input.shape', img_transfer_input.shape)
+
         img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input, len(source[0]))
+        print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape)
 
         # 2) Feed the data to the networks.
         # Blend images
         img_blend_pred = G(img_transfer_input_pyd)
+        print('img_blend_pred.shape', img_blend_pred.shape)
+
 
         # Fake Detection and Loss
         img_blend_pred_pyd = img_utils.create_pyramid(img_blend_pred, len(source[0]))
@@ -306,8 +316,6 @@ def Test(G):
 
 
 def main():
-    iter_count = 0
-    epoch_count = 0
     # Print out the experiment configurations. You can also save these to a file if
     # you want them to be persistent.
     print('[*] Beginning Training:')
@@ -361,4 +369,6 @@ def main():
 
 
 if __name__ == '__main__':
+    iter_count = 0
+    epoch_count = 0
     main()
