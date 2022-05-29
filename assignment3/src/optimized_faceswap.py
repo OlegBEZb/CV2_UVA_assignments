@@ -102,7 +102,7 @@ def convertTo2D(G_new):
     # depth = torch.max(G_new[:,2]) - torch.min(G_new[:,2])
     width = 128
     heigth = 128
-    depth = 1/2
+    depth = 1
 
     # Source: https://www3.ntu.edu.sg/home/ehchua/programming/opengl/CG_BasicsTheory.html
     V = torch.Tensor([[width/2, 0, 0, torch.min(G_new[:,0])+width/2],
@@ -316,95 +316,102 @@ def texturing(G, color, triangles):
 # person = cv2.imread("oleg.jpg")
 # print(person.shape)
 # print("SHAPE")
-person = cv2.imread("person.jpeg")
-print(person.shape)
-# person = cv2.resize(person, (128,128), interpolation = cv2.INTER_AREA)
-person = torch.from_numpy(person)
+# person = cv2.imread("img1.jpg")
+# print(person.shape)
+# # person = cv2.resize(person, (128,128), interpolation = cv2.INTER_AREA)
+# person = torch.from_numpy(person)
 
-ground_truth = predict_landmarks(person)
+### MULTIPLE FRAMES
+M = 3
+persons = []
+for i in range(M):
+    person = cv2.imread(f"img{i+1}.jpg")
+    person = torch.from_numpy(person)
+    persons.append(person)
+
+ground_truths = []
+for person in persons:
+    ground_truth = predict_landmarks(person)
+    x_translate = np.min(ground_truth[:,0]) + (np.max(ground_truth[:,0]) - np.min(ground_truth[:,0]))/2
+    y_translate = np.min(ground_truth[:,1]) + (np.max(ground_truth[:,1]) - np.min(ground_truth[:,1]))/2
+    ground_truth = ground_truth - np.array([x_translate, y_translate])
+
+    ground_truths.append(ground_truth)
 # visualize_landmarks(person,ground_truth,radius=10)
-
-x_translate = np.min(ground_truth[:,0]) + (np.max(ground_truth[:,0]) - np.min(ground_truth[:,0]))/2
-y_translate = np.min(ground_truth[:,1]) + (np.max(ground_truth[:,1]) - np.min(ground_truth[:,1]))/2
-ground_truth = ground_truth - np.array([x_translate, y_translate])
-
-# ground_truth = ground_truth - np.array([person.shape[0]/2, person.shape[0]/2])
 
 
 indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
-
-alpha = torch.autograd.Variable(torch.randn(30,), requires_grad=True)
-delta = torch.autograd.Variable(torch.randn(20,), requires_grad=True)
-omega = torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True)
-t = torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True)
-optim = torch.optim.Adam([alpha, delta, omega, t], lr=0.05)
+alphas = []
+deltas = []
+omegas = []
+ts = []
+for i in range(M):
+    alphas.append(torch.autograd.Variable(torch.randn(30,), requires_grad=True))
+    deltas.append(torch.autograd.Variable(torch.randn(20,), requires_grad=True))
+    omegas.append(torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True))
+    ts.append(torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True))
+optim = torch.optim.Adam(alphas + deltas + omegas + ts, lr=0.05)
 
 old_loss = np.inf
 new_loss = 10000000
 
 epsilon = 0.00001
-i = 0
+j = 0
 while (abs(old_loss - new_loss) > epsilon):
+    print("prediction #",j)
+
     optim.zero_grad()
     old_loss = new_loss
-    G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
-    G_lm = G[indices_model,:]
+    losses = torch.zeros(M)
+    for i in range(M):
+        G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alphas[i] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
-    # print(alpha)
-    # print(delta)
-    # print(omega)
-    # print(t)
-    # G_new = (omega @ G.T).T + t
-    # save_obj("test_tmp_before.obj",G.detach().numpy(),color,triangles)
-    G_new = (general_rotation(omega) @ G_lm.T).T + t
-    # print(general_rotation(omega))
-    # save_obj("test_tmp_after.obj",G_new.detach().numpy(),color,triangles)
-    predicted = convertTo2D(G_new)
-    # print(len(predicted[:,0]))
-    # TODO: MAKE IMAGE OF 2D POINTS
-    # G_image = zbuffer_approach(G_2D)
-    # predicted = G_2D[indices_model,:]
-    # if i == 0 or i == 5000:
-    #     plt.scatter(predicted[:,0].detach().numpy(), -predicted[:,1].detach().numpy(),label="pred")
-    #     plt.scatter(ground_truth[:,0], -ground_truth[:,1],label="gt")
-    #     plt.legend()
-    #     plt.show()
-    # visualize_landmarks(person, predicted, radius=1)
+        G_lm = G[indices_model,:]
 
-    print("prediction #",i)
+        G_new = (general_rotation(omegas[i]) @ G_lm.T).T + ts[i]
+        predicted = convertTo2D(G_new)
 
-    loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth))**2)
+        loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truths[i]))**2)
 
-    lambda_alpha = 0.5
-    lambda_delta = 0.5
-    loss_reg = lambda_alpha * torch.sum(alpha**2) + lambda_delta * torch.sum(delta**2)
+        lambda_alpha = 0.5
+        lambda_delta = 0.5
+        loss_reg = lambda_alpha * torch.sum(alphas[i]**2) + lambda_delta * torch.sum(deltas[i]**2)
 
-    loss_fit = loss_lan + loss_reg
-    print(loss_fit.item())
+        loss_fit = loss_lan + loss_reg
 
-    loss_fit.backward()
+        losses[i] = loss_fit
+
+    # print(loss_fit.item())
+
+    loss_combi = torch.mean(torch.Tensor(losses))
+
+    loss_combi.backward()
 
     optim.step()
 
-    new_loss = loss_fit.item()
-    i = i+1
+    new_loss = loss_combi.item()
+    j = j+1
 
-print("alpha", alpha)
-print("delta", delta)
-print("omega", omega)
-print("t", t)
+print("alphas", alphas)
+print("deltas", deltas)
+print("omegas", omegas)
+print("ts", ts)
 
-G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+textured_images = []
+for i in range(M):
+    G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alphas[i] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
-G_new_def = (general_rotation(omega) @ G_def.T).T + t
-# G_new_def = G + t
+    G_new_def = (general_rotation(omegas[i]) @ G_def.T).T + ts[i]
 
-save_obj("pytorch.obj",G_new_def.detach().numpy(),color,triangles)
+    save_obj(f"model{i+1}.obj",G_new_def.detach().numpy(),color,triangles)
 
-image = texturing(G_new_def.detach().numpy(), color, triangles)
-plt.imshow(image)
-plt.show()
+    image = texturing(G_new_def.detach().numpy(), color, triangles)
+    textured_images.append(image)
+
+for img in textured_images:
+    plt.imshow(img)
+    plt.show()
 
 
 
