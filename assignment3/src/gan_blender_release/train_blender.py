@@ -11,7 +11,6 @@ import cv2
 import utils
 import img_utils
 
-
 # Configurations
 ######################################################################
 # Fill in your experiment names and the other required components
@@ -89,11 +88,12 @@ print('[I] STATUS: Load Networks...', end='')
 # above.
 
 discriminator, discrim_optim_state, checkpoint_iters_d = loadModels(discriminator,
-                                                                  os.path.join(pre_trained_models_path, 'checkpoint_D.pth'),
-                                                                  device=device)
+                                                                    os.path.join(pre_trained_models_path,
+                                                                                 'checkpoint_D.pth'),
+                                                                    device=device)
 generator, gen_optim_state, checkpoint_iters_g = loadModels(generator,
-                                                          os.path.join(pre_trained_models_path, 'checkpoint_G.pth'),
-                                                          device=device)
+                                                            os.path.join(pre_trained_models_path, 'checkpoint_G.pth'),
+                                                            device=device)
 
 print(done)
 
@@ -117,7 +117,16 @@ print('[I] STATUS: Initiate Criterions and transfer to device...', end='')
 # Define your criterions here and transfer to the training device. They need to
 # be on the same device type.
 from gan_loss import GANLoss
-criterion_gan = GANLoss(use_lsgan=True)
+
+criterion_gan = GANLoss(use_lsgan=True).to(device)
+
+criterion_pixelwise = torch.nn.L1Loss()
+
+from vgg_loss import VGGLoss
+
+criterion_id = VGGLoss()
+
+criterion_attr = VGGLoss()
 print(done)
 
 print('[I] STATUS: Initiate Dataloaders...')
@@ -130,8 +139,13 @@ print('[I] STATUS: Initiate Dataloaders...')
 # img_transforms = Compose(numpy_transforms + tensor_transforms)
 
 from SwappedDataset import SwappedDatasetLoader
+
 data_root = '../../data_set/data_set/data'
-train_dataset = SwappedDatasetLoader(data_root, transform=None)
+train_loader = SwappedDatasetLoader(data_root, transform=None)  # global variables is all you need
+from torch.utils.data import DataLoader
+
+train_loader = DataLoader(train_loader, batch_size=32, shuffle=True, num_workers=1,
+                          pin_memory=True, drop_last=True)
 # if val_dataset is not None:
 #     val_dataset = VideoSeqDataset(transform=img_transforms)
 print(done)
@@ -174,29 +188,76 @@ def blend_imgs(source_tensor, target_tensor, mask_tensor):
     return torch.cat(out_tensors, dim=0)
 
 
-def Train(trainLoader, G, D, epoch_count, iter_count):
+def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
     G.train(True)
     D.train(True)
     epoch_count += 1
-    pbar = tqdm(enumerate(trainLoader), total=batches_train, leave=False)
+    batches_train = len(train_loader) / train_loader.batch_size
+    pbar = tqdm(enumerate(train_loader), total=batches_train, leave=False)
 
     Epoch_time = time.time()
 
     for i, data in pbar:
         iter_count += 1
-        images, _ = data
+        # images, _ = data
 
         # Implement your training loop here. images will be the datastructure
         # being returned from your dataloader.
         # 1) Load and transfer data to device
-        # 2) Feed the data to the networks. 
+        source, target, swap, mask = data['source'], data['target'], data['swap'], data['mask']
+        img_transfer = transfer_mask(source, target, mask)
+        img_blend = img_utils.bgr2tensor(blend_imgs_bgr(source, target, mask)).to(device)
+        img_transfer_input = torch.cat((img_transfer, target, mask), dim=1)
+        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input, len(source[0]))
+
+        # 2) Feed the data to the networks.
+        # Blend images
+        img_blend_pred = G(img_transfer_input_pyd)
+
+        # Fake Detection and Loss
+        img_blend_pred_pyd = img_utils.create_pyramid(img_blend_pred, len(source[0]))
+        pred_fake_pool = D([x.detach() for x in img_blend_pred_pyd])
+        loss_D_fake = criterion_gan(pred_fake_pool, False)
+
+        # Real Detection and Loss
+        pred_real = D(target)
+        loss_D_real = criterion_gan(pred_real, True)
+
         # 4) Calculate the losses.
+        loss_D_total = (loss_D_fake + loss_D_real) * 0.5
+
+        # GAN loss (Fake Passability Loss)
+        pred_fake = D(img_blend_pred_pyd)
+        loss_G_GAN = criterion_gan(pred_fake, True)
+
+        # Reconstruction
+        loss_pixelwise = criterion_pixelwise(img_blend_pred, img_blend)
+        loss_id = criterion_id(img_blend_pred, img_blend)
+        loss_attr = criterion_attr(img_blend_pred, img_blend)
+        loss_rec = pix_weight * loss_pixelwise + 0.5 * loss_id + 0.5 * loss_attr
+
+        loss_G_total = rec_weight * loss_rec + gan_weight * loss_G_GAN
+
         # 5) Perform backward calculation.
         # 6) Perform the optimizer step.
+        # Update generator weights
+        optimizer_G.zero_grad()
+        loss_G_total.backward()
+        optimizer_G.step()
+
+        # Update discriminator weights
+        optimizer_D.zero_grad()
+        loss_D_total.backward()
+        optimizer_D.step()
 
         if iter_count % displayIter == 0:
-            pass
-        # Write to the log file.
+            # Write to the log file.
+            # trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_lr()[0]:.0e};\n'
+            #                   f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
+            #                   f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
+            print(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_lr()[0]:.0e};\n'
+                  f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
+                  f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
 
         # Print out the losses here. Tqdm uses that to automatically print it
         # in front of the progress bar.
@@ -244,50 +305,60 @@ def Test(G):
         # 5) The GT Blend that the network is targettting.
 
 
-iter_count = 0
-# Print out the experiment configurations. You can also save these to a file if
-# you want them to be persistent.
-print('[*] Beginning Training:')
-print('\tMax Epoch: ', max_epochs)
-print('\tLogging iter: ', displayIter)
-print('\tSaving frequency (per epoch): ', saveIter)
-print('\tModels Dumped at: ', check_point_loc)
-print('\tVisuals Dumped at: ', visuals_loc)
-print('\tExperiment Name: ', experiment_name)
+def main():
+    iter_count = 0
+    epoch_count = 0
+    # Print out the experiment configurations. You can also save these to a file if
+    # you want them to be persistent.
+    print('[*] Beginning Training:')
+    print('\tMax Epoch: ', max_epochs)
+    print('\tLogging iter: ', displayIter)
+    print('\tSaving frequency (per epoch): ', saveIter)
+    print('\tModels Dumped at: ', check_point_loc)
+    print('\tVisuals Dumped at: ', visuals_loc)
+    print('\tExperiment Name: ', experiment_name)
 
-for i in range(max_epochs):
-    total_loss = proces_epoch(train_loader, train=True)
-    if val_loader is not None:
-        with torch.no_grad():
-            total_loss = proces_epoch(val_loader, train=False)
+    for i in range(max_epochs):
+        # Call the Train function here
+        # Step through the schedulers if using them.
+        # You can also print out the losses of the network here to keep track of
+        # epoch wise loss.
+        total_loss = Train(G=generator, D=discriminator, epoch_count=epoch_count,
+                           iter_count=iter_count)  # love passing global variables
 
-    # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
-    if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-        scheduler_G.step(total_loss)
-        scheduler_D.step(total_loss)
-    else:
-        scheduler_G.step()
-        scheduler_D.step()
+        # total_loss = proces_epoch(train_loader, train=True)
+        # if val_loader is not None:
+        #     with torch.no_grad():
+        #         total_loss = proces_epoch(val_loader, train=False)
+        #
+        # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
+        # if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+        #     scheduler_G.step(total_loss)
+        #     scheduler_D.step(total_loss)
+        # else:
+        #     scheduler_G.step()
+        #     scheduler_D.step()
+        #
+        # # Save models checkpoints
+        # is_best = total_loss < best_loss
+        # best_loss = min(best_loss, total_loss)
+        # utils.save_checkpoint(exp_dir, 'Gb', {
+        #     'resolution': res,
+        #     'epoch': epoch + 1,
+        #     'state_dict': Gb.module.state_dict() if gpus and len(gpus) > 1 else Gb.state_dict(),
+        #     'optimizer': optimizer_G.state_dict(),
+        #     'best_loss': best_loss,
+        # }, is_best)
+        # utils.save_checkpoint(exp_dir, 'D', {
+        #     'resolution': res,
+        #     'epoch': epoch + 1,
+        #     'state_dict': D.module.state_dict() if gpus and len(gpus) > 1 else D.state_dict(),
+        #     'optimizer': optimizer_D.state_dict(),
+        #     'best_loss': best_loss,
+        # }, is_best)
 
-    # Save models checkpoints
-    is_best = total_loss < best_loss
-    best_loss = min(best_loss, total_loss)
-    utils.save_checkpoint(exp_dir, 'Gb', {
-        'resolution': res,
-        'epoch': epoch + 1,
-        'state_dict': Gb.module.state_dict() if gpus and len(gpus) > 1 else Gb.state_dict(),
-        'optimizer': optimizer_G.state_dict(),
-        'best_loss': best_loss,
-    }, is_best)
-    utils.save_checkpoint(exp_dir, 'D', {
-        'resolution': res,
-        'epoch': epoch + 1,
-        'state_dict': D.module.state_dict() if gpus and len(gpus) > 1 else D.state_dict(),
-        'optimizer': optimizer_D.state_dict(),
-        'best_loss': best_loss,
-    }, is_best)
-    # Call the Train function here
-    # Step through the schedulers if using them.
-    # You can also print out the losses of the network here to keep track of
-    # epoch wise loss.
-trainLogger.close()
+    trainLogger.close()
+
+
+if __name__ == '__main__':
+    main()

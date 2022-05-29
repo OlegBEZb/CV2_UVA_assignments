@@ -84,6 +84,7 @@ class SwappedDatasetLoader(Dataset):
         #     return image_dict, self.data_paths[index]
         group_name = self.group_names[index]
         group_paths = self.group2path_mapping[group_name]
+        # CV2 uses BGR by default
         images_dict = {'source': rgb2tensor(cv2.imread([p for p in group_paths if '_fg_' in p][0])),
                        'target': rgb2tensor(cv2.imread([p for p in group_paths if '_bg_' in p][0])),
                        'swap': rgb2tensor(cv2.imread([p for p in group_paths if '_sw_' in p][0])),
