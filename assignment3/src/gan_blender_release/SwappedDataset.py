@@ -84,9 +84,14 @@ class SwappedDatasetLoader(Dataset):
         #     return image_dict, self.data_paths[index]
         group_name = self.group_names[index]
         group_paths = self.group2path_mapping[group_name]
+
+        mask = cv2.imread([p for p in group_paths if '_sw_' in p][0])
+        mask = np.where(mask > 0, 1, mask)
+
+        # CV2 uses BGR by default
         images_dict = {'source': rgb2tensor(cv2.imread([p for p in group_paths if '_fg_' in p][0])),
                        'target': rgb2tensor(cv2.imread([p for p in group_paths if '_bg_' in p][0])),
-                       'swap': rgb2tensor(cv2.imread([p for p in group_paths if '_sw_' in p][0])),
+                       'swap': rgb2tensor(mask),
                        'mask': rgb2tensor(cv2.imread([p for p in group_paths if '_mask_' in p][0])),
                        }
         # print('images_dict\n', {k: v.shape for k,v in images_dict.items()})
