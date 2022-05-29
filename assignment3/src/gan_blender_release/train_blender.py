@@ -211,11 +211,11 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
         img_blend = blend_imgs(source, target, mask)
         print('img_blend.shape', img_blend.shape)
 
-        print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask.shape, mask.type())
-        img_transfer_input = torch.cat((img_transfer, target, mask), dim=2)
+        print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask[:, :1, :, :].shape, mask[:, :1, :, :].type())
+        img_transfer_input = torch.cat((img_transfer, target, mask[:, :1, :, :]), dim=1)
         print('img_transfer_input.shape', img_transfer_input.shape)
 
-        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input, len(source[0]))
+        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input, 1)  # len(source[0])
         print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape)
 
         # 2) Feed the data to the networks.
@@ -262,9 +262,9 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
 
         if iter_count % displayIter == 0:
             # Write to the log file.
-            # trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_lr()[0]:.0e};\n'
-            #                   f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
-            #                   f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
+            trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_last_lr():.0e};\n'
+                              f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
+                              f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
             print(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_lr()[0]:.0e};\n'
                   f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
                   f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
