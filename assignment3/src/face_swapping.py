@@ -274,30 +274,52 @@ def render(uvz, color, triangles, H=480, W=640):
     
     return image
 
-def texturing(G, color, triangles, shape):
+
+def texturing_for_faceswap(G, color, triangles, shape, mask):
+    G = G.astype(int)
+    x_min = np.min(G[:,0])
+    G[:,1] = -G[:,1]    # flip the y-axis
+    y_min = np.min(G[:,1])
+
+    # if image will be used be for faceswap, place face on position of mask
+    zero_indices_x, zero_indices_y, _ = np.where(mask==0)
+
+    x_correction = np.min(zero_indices_x)
+    y_correction = np.min(zero_indices_y)
+
+    # translate the image to have all positive indices
+    G[:,0] += -x_min + y_correction
+    G[:,1] += -y_min + x_correction
+
+    # if image will be used for faceswap, image should be of the same size
+    width, height, _ = shape
+
+    image = render(G, color, triangles.astype(int), H=height, W=width)
+    return image
+
+
+def texturing(G, color, triangles):
     G = G.astype(int)
     x_min = np.min(G[:,0])
     G[:,1] = -G[:,1]    # flip the y-axis
     y_min = np.min(G[:,1])
 
     # translate the image to have all positive indices
-    G[:,0] += -x_min
-    G[:,1] += -y_min
+    G[:,0] += -x_min 
+    G[:,1] += -y_min 
 
-    width, height, _ = shape
-
-    # width = int(np.ceil(np.array(np.max(G[:,0]) - np.min(G[:,0]))))
-    # height = int(np.ceil(np.array(np.max(G[:,1]) - np.min(G[:,1]))))
+    # if image will be used for faceswap, image should be of the same size
+    width = int(np.ceil(np.array(np.max(G[:,0]) - np.min(G[:,0]))))
+    height = int(np.ceil(np.array(np.max(G[:,1]) - np.min(G[:,1]))))
 
     image = render(G, color, triangles.astype(int), H=height, W=width)
     return image
 
-### LATENT PARAMETERS ESTIMATION
-fg = cv2.imread("cropped_fg.png")
-bg = cv2.imread("cropped_bg.png")
+# landmarks = predict_landmarks(img_G)
+# visualize_landmarks(img_G, landmarks, 4)
 
-fg  = torch.from_numpy(fg)
-bg  = torch.from_numpy(bg)
+### LATENT PARAMETERS ESTIMATION
+
 
 def find_ground_truth_landmarks(person):
     ground_truth = predict_landmarks(person)
@@ -307,8 +329,7 @@ def find_ground_truth_landmarks(person):
     ground_truth = ground_truth - np.array([x_translate, y_translate])
     return ground_truth
 
-fg_ground_truth = find_ground_truth_landmarks(fg)
-bg_ground_truth = find_ground_truth_landmarks(bg)
+
 
 
 def optimize_geometry(ground_truth_landmarks, file_name):
@@ -323,7 +344,7 @@ def optimize_geometry(ground_truth_landmarks, file_name):
     old_loss = np.inf
     new_loss = 10000000
 
-    epsilon = 0.00001
+    epsilon = 0.01
     i = 0
     while (abs(old_loss - new_loss) > epsilon):
         optim.zero_grad()
@@ -336,8 +357,8 @@ def optimize_geometry(ground_truth_landmarks, file_name):
 
         loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth_landmarks))**2)
 
-        lambda_alpha = 0.5
-        lambda_delta = 0.5
+        lambda_alpha = 1
+        lambda_delta = 1
         loss_reg = lambda_alpha * torch.sum(alpha**2) + lambda_delta * torch.sum(delta**2)
 
         loss_fit = loss_lan + loss_reg
@@ -437,44 +458,60 @@ def faceswap_video(bg_video_path, fg_image_path):
 
     fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg_image")
 
-    all_images = []
-    for delta, omega, t in zip(bg_deltas, bg_omegas, bg_ts):
+    # all_images = []
+    # for delta, omega, t in zip(bg_deltas, bg_omegas, bg_ts):
 
 
 
-    out = cv2.VideoWriter('project.avi',cv2.VideoWriter_fourcc(*'DIVX'), 15, size)
+    # out = cv2.VideoWriter('project.avi',cv2.VideoWriter_fourcc(*'DIVX'), 15, size)
 
-    for i in range(len(img_array)):
-        out.write(img_array[i])
-    out.release()
+    # for i in range(len(img_array)):
+    #     out.write(img_array[i])
+    # out.release()
+
+def face_swapping(fg_path, bg_path):
+    fg = cv2.imread(fg_path)
+    bg = cv2.imread(bg_path)
+
+    fg  = torch.from_numpy(fg)
+    bg  = torch.from_numpy(bg)
+
+    fg_ground_truth = find_ground_truth_landmarks(fg)
+    bg_ground_truth = find_ground_truth_landmarks(bg)
+
+    fg_G, fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg")
+    bg_G, bg_alpha, bg_delta, bg_omega, bg_t = optimize_geometry(bg_ground_truth, "bg")
+
+    fg_adopted = (general_rotation(bg_omega) @ fg_G.T).T + bg_t
+
+    bg_landmarks = predict_landmarks(bg)
+
+    # render an image of the new face, using the position of the face in the original image
+    mask = np.full(bg.shape, 255, dtype=np.uint8)
+    forehead = bg_landmarks[17:27]
+    forehead[:,1] += -35
+    roi_corners = np.array([np.concatenate((bg_landmarks[:17], # chin
+                                            forehead[::-1], # eyebrows
+                                            ), axis=0)], dtype=np.int32)
+    channel_count = bg.shape[2]
+    ignore_mask_color = (0,)*channel_count
+    cv2.fillPoly(mask, roi_corners, ignore_mask_color)
+    fg_adopted_img = texturing_for_faceswap(fg_adopted.detach().numpy(), color, triangles, bg.shape, mask)
+
+    # first version
+    # swapped = np.where(mask, (bg.detach().numpy()/255)[..., ::-1], fg_adopted_img)
+    # plt.imshow(swapped)
+    # plt.axis("off")
+    # plt.show()
+
+    # second version swapped
+    new_mask = np.tile(np.any(fg_adopted_img > 0, axis=2, keepdims=True), (1, 1, 3))
+    new_bg = np.copy(bg)
+    new_bg[new_mask] = 0
+    new_output = np.where(new_mask, fg_adopted_img, (new_bg/255)[..., ::-1])
+    plt.imshow(new_output)
+    plt.axis("off")
+    plt.show()
 
 
-fg_G, fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg")
-bg_G, bg_alpha, bg_delta, bg_omega, bg_t = optimize_geometry(bg_ground_truth, "bg")
-
-fg_adopted = (general_rotation(bg_omega) @ fg_G.T).T + bg_t
-
-bg_landmarks = predict_landmarks(bg)
-# visualize_landmarks(bg, bg_landmarks)
-
-# from notebook
-mask = np.zeros(bg.shape, dtype=np.uint8)
-roi_corners = np.array([np.concatenate((bg_landmarks[:17], # chin
-                                        bg_landmarks[17:27][::-1], # eyebrows
-                                        ), axis=0)], dtype=np.int32)
-channel_count = bg.shape[2]
-ignore_mask_color = (255,)*channel_count
-cv2.fillPoly(mask, roi_corners, ignore_mask_color)
-plt.imshow(mask)
-plt.axis("off")
-plt.show()
-
-## find landmarks of the fg_adopted does not work somehow. could be useful if it works
-# fg_image = (fg_image*255).astype(int)
-# print(torch.from_numpy(fg_image))
-# print(np.max(fg_image))
-# visualize_landmarks(fg_image, predict_landmarks(torch.from_numpy(fg_image)))
-
-# TODO: merge fg_adopted and bg
-
-
+face_swapping("cropped_fg.png", "cropped_bg.png")
