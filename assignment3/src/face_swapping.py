@@ -1,3 +1,4 @@
+from pickletools import optimize
 from tkinter import Variable
 import h5py
 import numpy as np
@@ -38,8 +39,6 @@ expr_pcavariance20 = expr_pcavariance[:20]
 alpha = np.random.uniform(-1,1,30)
 delta = np.random.uniform(-1,1,20)
 
-G = id_mean + id_pcabasis30 @ (alpha * np.sqrt(id_pcavariance30)) + expr_mean + expr_pcabasis20 @ (delta * np.sqrt(expr_pcavariance20))
-
 color = np.asarray(bfm['color/model/mean'], dtype=np.float32)
 color = np.reshape(color, (-1,3))
 
@@ -63,8 +62,6 @@ def save_obj(file_path, shape, color, triangles):
 
         np.savetxt(f, triangles + 1, fmt='f %d %d %d')
 
-save_obj('pointcloud.obj',G,color,triangles)
-
 def rotation_y(theta):
     return np.array([[np.cos(theta), 0, np.sin(theta)],
                      [0, 1, 0],
@@ -84,25 +81,10 @@ def general_rotation(omega):
     rot[2,2] = torch.cos(beta)*torch.cos(gamma)
     return rot
 
-rot10 = rotation_y(1/36 * np.pi)
-rot_10 = rotation_y(-1/36 * np.pi)
-
-G_rot10 = (rot10 @ G.T).T
-G_rot_10 = (rot_10 @ G.T).T
-
-save_obj('rot10.obj',G_rot10,color,triangles)
-save_obj('rot_10.obj',G_rot_10,color,triangles)
-
-## -------------------------- Use pinhole camera model to obtain 2D
-G_new = (rot10 @ G.T).T + np.array([0, 0, -500])
-
 def convertTo2D(G_new):
-    # width = torch.max(G_new[:,0]) - torch.min(G_new[:,0])
-    # heigth = torch.max(G_new[:,1]) - torch.min(G_new[:,1])
-    # depth = torch.max(G_new[:,2]) - torch.min(G_new[:,2])
     width = 128
     heigth = 128
-    depth = 1
+    depth = 1/2
 
     # Source: https://www3.ntu.edu.sg/home/ehchua/programming/opengl/CG_BasicsTheory.html
     V = torch.Tensor([[width/2, 0, 0, torch.min(G_new[:,0])+width/2],
@@ -292,7 +274,7 @@ def render(uvz, color, triangles, H=480, W=640):
     
     return image
 
-def texturing(G, color, triangles):
+def texturing(G, color, triangles, shape):
     G = G.astype(int)
     x_min = np.min(G[:,0])
     G[:,1] = -G[:,1]    # flip the y-axis
@@ -302,8 +284,10 @@ def texturing(G, color, triangles):
     G[:,0] += -x_min
     G[:,1] += -y_min
 
-    width = int(np.ceil(np.array(np.max(G[:,0]) - np.min(G[:,0]))))
-    height = int(np.ceil(np.array(np.max(G[:,1]) - np.min(G[:,1]))))
+    width, height, _ = shape
+
+    # width = int(np.ceil(np.array(np.max(G[:,0]) - np.min(G[:,0]))))
+    # height = int(np.ceil(np.array(np.max(G[:,1]) - np.min(G[:,1]))))
 
     image = render(G, color, triangles.astype(int), H=height, W=width)
     return image
@@ -313,105 +297,96 @@ def texturing(G, color, triangles):
 # visualize_landmarks(img_G, landmarks, 4)
 
 ### LATENT PARAMETERS ESTIMATION
-# person = cv2.imread("oleg.jpg")
-# print(person.shape)
-# print("SHAPE")
-# person = cv2.imread("img1.jpg")
-# print(person.shape)
-# # person = cv2.resize(person, (128,128), interpolation = cv2.INTER_AREA)
-# person = torch.from_numpy(person)
+fg = cv2.imread("cropped_fg.png")
+bg = cv2.imread("cropped_bg.png")
 
-### MULTIPLE FRAMES
-M = 3
-persons = []
-for i in range(M):
-    person = cv2.imread(f"img{i+1}.jpg")
-    person = torch.from_numpy(person)
-    persons.append(person)
+fg  = torch.from_numpy(fg)
+bg  = torch.from_numpy(bg)
 
-ground_truths = []
-for person in persons:
+def find_ground_truth_landmarks(person):
     ground_truth = predict_landmarks(person)
+
     x_translate = np.min(ground_truth[:,0]) + (np.max(ground_truth[:,0]) - np.min(ground_truth[:,0]))/2
     y_translate = np.min(ground_truth[:,1]) + (np.max(ground_truth[:,1]) - np.min(ground_truth[:,1]))/2
     ground_truth = ground_truth - np.array([x_translate, y_translate])
+    return ground_truth
 
-    ground_truths.append(ground_truth)
-# visualize_landmarks(person,ground_truth,radius=10)
+fg_ground_truth = find_ground_truth_landmarks(fg)
+bg_ground_truth = find_ground_truth_landmarks(bg)
 
 
-indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
-alphas = []
-deltas = []
-omegas = []
-ts = []
-for i in range(M):
-    alphas.append(torch.autograd.Variable(torch.randn(30,), requires_grad=True))
-    deltas.append(torch.autograd.Variable(torch.randn(20,), requires_grad=True))
-    omegas.append(torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True))
-    ts.append(torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True))
-optim = torch.optim.Adam(alphas + deltas + omegas + ts, lr=0.05)
+def optimize_geometry(ground_truth_landmarks, file_name):
+    indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
 
-old_loss = np.inf
-new_loss = 10000000
+    alpha = torch.autograd.Variable(torch.randn(30,), requires_grad=True)
+    delta = torch.autograd.Variable(torch.randn(20,), requires_grad=True)
+    omega = torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True)
+    t = torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True)
+    optim = torch.optim.Adam([alpha, delta, omega, t], lr=0.05)
 
-epsilon = 0.00001
-j = 0
-while (abs(old_loss - new_loss) > epsilon):
-    print("prediction #",j)
+    old_loss = np.inf
+    new_loss = 10000000
 
-    optim.zero_grad()
-    old_loss = new_loss
-
-    losses = torch.zeros(M)
-    for i in range(M):
-        G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alphas[i] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+    epsilon = 0.00001
+    i = 0
+    while (abs(old_loss - new_loss) > epsilon):
+        optim.zero_grad()
+        old_loss = new_loss
+        G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
         G_lm = G[indices_model,:]
-
-        G_new = (general_rotation(omegas[i]) @ G_lm.T).T + ts[i]
+        G_new = (general_rotation(omega) @ G_lm.T).T + t
         predicted = convertTo2D(G_new)
-
-        loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truths[i]))**2)
+    
+        loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth_landmarks))**2)
 
         lambda_alpha = 0.5
         lambda_delta = 0.5
-        loss_reg = lambda_alpha * torch.sum(alphas[i]**2) + lambda_delta * torch.sum(deltas[i]**2)
+        loss_reg = lambda_alpha * torch.sum(alpha**2) + lambda_delta * torch.sum(delta**2)
 
         loss_fit = loss_lan + loss_reg
+        print(loss_fit.item())
 
-        losses[i] = loss_fit
+        loss_fit.backward()
 
-    # print(loss_fit.item())
+        optim.step()
 
-    loss_combi = torch.mean(torch.Tensor(losses))
+        new_loss = loss_fit.item()
+        i = i+1
+        break
 
-    loss_combi.backward()
+    # G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+    G_new_def = (general_rotation(omega) @ G.T).T + t
+    save_obj(f"{file_name}.obj",G_new_def.detach().numpy(),color,triangles)
 
-    optim.step()
+    return G_new_def, alpha, delta, omega, t
 
-    new_loss = loss_combi.item()
-    j = j+1
+fg_G, fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg")
+bg_G, bg_alpha, bg_delta, bg_omega, bg_t = optimize_geometry(bg_ground_truth, "bg")
 
-print("alphas", alphas)
-print("deltas", deltas)
-print("omegas", omegas)
-print("ts", ts)
+fg_adopted = (general_rotation(bg_omega) @ fg_G.T).T + bg_t
 
-textured_images = []
-for i in range(M):
-    G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alphas[i] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+bg_landmarks = predict_landmarks(bg)
+# visualize_landmarks(bg, bg_landmarks)
 
-    G_new_def = (general_rotation(omegas[i]) @ G_def.T).T + ts[i]
+# from notebook
+mask = np.zeros(bg.shape, dtype=np.uint8)
+roi_corners = np.array([np.concatenate((bg_landmarks[:17], # chin
+                                        bg_landmarks[17:27][::-1], # eyebrows
+                                        ), axis=0)], dtype=np.int32)
+channel_count = bg.shape[2]
+ignore_mask_color = (255,)*channel_count
+cv2.fillPoly(mask, roi_corners, ignore_mask_color)
+plt.imshow(mask)
+plt.axis("off")
+plt.show()
 
-    save_obj(f"model{i+1}.obj",G_new_def.detach().numpy(),color,triangles)
+## find landmarks of the fg_adopted does not work somehow. could be useful if it works
+# fg_image = (fg_image*255).astype(int)
+# print(torch.from_numpy(fg_image))
+# print(np.max(fg_image))
+# visualize_landmarks(fg_image, predict_landmarks(torch.from_numpy(fg_image)))
 
-    image = texturing(G_new_def.detach().numpy(), color, triangles)
-    textured_images.append(image)
-
-for img in textured_images:
-    plt.imshow(img)
-    plt.show()
-
+# TODO: merge fg_adopted and bg
 
 
