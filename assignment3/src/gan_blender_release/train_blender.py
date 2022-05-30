@@ -16,6 +16,9 @@ import img_utils
 # Fill in your experiment names and the other required components
 experiment_name = 'Blender'
 data_root = '/content/gdrive/MyDrive/CV_2/data_set/data'
+# data_root = '../../data_set/data_set/data'
+pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
+# pre_trained_models_path = '../../data_set/Pretrained_model'
 train_list = ''
 test_list = ''
 batch_size = 8
@@ -72,9 +75,6 @@ print('[I] STATUS: Initiate Network and transfer to device...', end='')
 from discriminators_pix2pix import MultiscaleDiscriminator
 from res_unet import MultiScaleResUNet
 from utils import loadModels
-
-# pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
-pre_trained_models_path = '../../data_set/Pretrained_model'
 
 discriminator = MultiscaleDiscriminator().to(device)
 generator = MultiScaleResUNet(in_nc=7, out_nc=3).to(device)
@@ -140,7 +140,6 @@ print('[I] STATUS: Initiate Dataloaders...')
 
 from SwappedDataset import SwappedDatasetLoader
 
-data_root = '../../data_set/data_set/data'
 train_loader = SwappedDatasetLoader(data_root, transform=None)  # global variables is all you need
 
 from torch.utils.data import DataLoader
@@ -205,23 +204,27 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
         # being returned from your dataloader.
         # 1) Load and transfer data to device
         source, target, swap, mask = data['source'].squeeze(), data['target'].squeeze(), data['swap'].squeeze(), data['mask'].squeeze()
-        print('source.shape', source.shape, source.type())
+        print('source before device', source.get_device())
+        source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
+        print('source shape, type, device after device', source.shape, source.type(), source.get_device())
         img_transfer = transfer_mask(source, target, mask)
         print('img_transfer.shape', img_transfer.shape, img_transfer.type())
         img_blend = blend_imgs(source, target, mask)
-        print('img_blend.shape', img_blend.shape)
+        print('img_blend shape, device', img_blend.shape, img_blend.get_device())
+        img_blend = img_blend.to(device)
+        print('img_blend device', img_blend.get_device())
 
         print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask[:, :1, :, :].shape, mask[:, :1, :, :].type())
         img_transfer_input = torch.cat((img_transfer, target, mask[:, :1, :, :]), dim=1)
-        print('img_transfer_input.shape', img_transfer_input.shape)
+        print('img_transfer_input.shape', img_transfer_input.shape, img_transfer_input.get_device())
 
-        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input, 1)  # len(source[0])
-        print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape)
+        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input.to(device), 1)  # len(source[0])
+        print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape, img_transfer_input_pyd[0].get_device())
 
         # 2) Feed the data to the networks.
         # Blend images
-        img_blend_pred = G(img_transfer_input_pyd)
-        print('img_blend_pred.shape', img_blend_pred.shape)
+        img_blend_pred = G([p.to(device) for p in img_transfer_input_pyd])
+        print('img_blend_pred shape, device', img_blend_pred.shape, img_blend_pred.get_device())
 
 
         # Fake Detection and Loss

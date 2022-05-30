@@ -45,7 +45,6 @@ def make_dataset(dir):
         if is_png(fname):
             path = os.path.join(dir, fname)
             files.append(path)
-
     return files
 
 
@@ -55,17 +54,18 @@ class SwappedDatasetLoader(Dataset):
         # Define your initializations and the transforms here. You can also
         # define your tensor transforms to normalize and resize your tensors.
         # As a rule of thumb, put anything that remains constant here.
-        if os.path.isdir(data_path):
-            self.file_paths = make_dataset(data_path)
+        if not os.path.isdir(data_path):
+            raise
+        self.file_paths = make_dataset(data_path)
 
-            self.group2path_mapping = defaultdict(list)
-            for file_path in self.file_paths:
-                self.group2path_mapping[file_path.split('/')[-1].split('_')[0]].append(file_path)
+        self.group2path_mapping = defaultdict(list)
+        for file_path in self.file_paths:
+            self.group2path_mapping[file_path.split('/')[-1].split('_')[0]].append(file_path)
 
-            print(f'initialized with {len(self.file_paths)} files. first path is', self.file_paths[0])
-            print(f'different groups: {len(self.group2path_mapping)}. '
-                  f'first group: {self.group2path_mapping[list(self.group2path_mapping.keys())[0]]}')
-            self.group_names = list(self.group2path_mapping.keys())
+        print(f'initialized with {len(self.file_paths)} files. first path is', self.file_paths[0])
+        print(f'different groups: {len(self.group2path_mapping)}. '
+              f'first group: {self.group2path_mapping[list(self.group2path_mapping.keys())[0]]}')
+        self.group_names = list(self.group2path_mapping.keys())
         self.resize = resize
 
     def __len__(self):
