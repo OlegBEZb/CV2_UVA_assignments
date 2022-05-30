@@ -195,7 +195,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
     G.train(True)
     D.train(True)
     epoch_count += 1
-    batches_train = math.ceil(len(train_loader) / train_loader.batch_size)
+    batches_train = math.floor(len(train_loader) / train_loader.batch_size)
     pbar = tqdm(enumerate(train_loader), total=batches_train, leave=False)
 
     Epoch_time = time.time()
