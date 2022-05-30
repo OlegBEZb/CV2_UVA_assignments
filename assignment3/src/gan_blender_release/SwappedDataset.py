@@ -85,14 +85,23 @@ class SwappedDatasetLoader(Dataset):
         group_name = self.group_names[index]
         group_paths = self.group2path_mapping[group_name]
 
-        mask = cv2.imread([p for p in group_paths if '_sw_' in p][0])
-        mask = np.where(mask > 0, 1, mask)
+        try:
+            mask = cv2.imread([p for p in group_paths if '_mask_' in p][0])
+            mask = np.where(mask > 0, 1, mask)
+
+            source = cv2.imread([p for p in group_paths if '_fg_' in p][0])
+
+            target = cv2.imread([p for p in group_paths if '_bg_' in p][0])
+
+            swap = cv2.imread([p for p in group_paths if '_sw_' in p][0])
+        except:
+            print(f'was not able to find some files for {group_name}\nhaving the following paths:{group_paths}')
 
         # CV2 uses BGR by default
-        images_dict = {'source': rgb2tensor(cv2.imread([p for p in group_paths if '_fg_' in p][0])),
-                       'target': rgb2tensor(cv2.imread([p for p in group_paths if '_bg_' in p][0])),
-                       'swap': rgb2tensor(mask),
-                       'mask': rgb2tensor(cv2.imread([p for p in group_paths if '_mask_' in p][0])),
+        images_dict = {'source': rgb2tensor(source),
+                       'target': rgb2tensor(target),
+                       'swap': rgb2tensor(swap),
+                       'mask': rgb2tensor(mask),
                        }
         # print('images_dict\n', {k: v.shape for k,v in images_dict.items()})
         return images_dict
