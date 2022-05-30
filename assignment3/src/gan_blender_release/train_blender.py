@@ -1,5 +1,7 @@
 import os
 import time
+import math
+
 import torch
 import torch.nn.parallel
 import numpy as np
@@ -22,9 +24,9 @@ pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_mode
 train_list = ''
 test_list = ''
 batch_size = 8
-nthreads = 1
-max_epochs = 20
-displayIter = 20
+nthreads = 2
+max_epochs = 1  # 20
+displayIter = 10
 saveIter = 1
 img_resolution = 256
 
@@ -78,6 +80,7 @@ from utils import loadModels
 
 discriminator = MultiscaleDiscriminator().to(device)
 generator = MultiScaleResUNet(in_nc=7, out_nc=3).to(device)
+print('\ngenerator, discriminator devices are GPU', next(generator.parameters()).is_cuda, next(discriminator.parameters()).is_cuda)
 print(done)
 
 print('[I] STATUS: Load Networks...', end='')
@@ -94,6 +97,7 @@ discriminator, discrim_optim_state, checkpoint_iters_d = loadModels(discriminato
 generator, gen_optim_state, checkpoint_iters_g = loadModels(generator,
                                                             os.path.join(pre_trained_models_path, 'checkpoint_G.pth'),
                                                             device=device)
+print('\ngenerator, discriminator devices are GPU', next(generator.parameters()).is_cuda, next(discriminator.parameters()).is_cuda)
 
 print(done)
 
@@ -120,13 +124,13 @@ from gan_loss import GANLoss
 
 criterion_gan = GANLoss(use_lsgan=True).to(device)
 
-criterion_pixelwise = torch.nn.L1Loss()
+criterion_pixelwise = torch.nn.L1Loss().to(device)
 
 from vgg_loss import VGGLoss
 
-criterion_id = VGGLoss()
+criterion_id = VGGLoss().to(device)
 
-criterion_attr = VGGLoss()
+criterion_attr = VGGLoss().to(device)
 print(done)
 
 print('[I] STATUS: Initiate Dataloaders...')
@@ -191,7 +195,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
     G.train(True)
     D.train(True)
     epoch_count += 1
-    batches_train = len(train_loader) / train_loader.batch_size
+    batches_train = math.ceil(len(train_loader) / train_loader.batch_size)
     pbar = tqdm(enumerate(train_loader), total=batches_train, leave=False)
 
     Epoch_time = time.time()
@@ -204,27 +208,27 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
         # being returned from your dataloader.
         # 1) Load and transfer data to device
         source, target, swap, mask = data['source'].squeeze(), data['target'].squeeze(), data['swap'].squeeze(), data['mask'].squeeze()
-        print('source before device', source.get_device())
+        # print('source before device', source.get_device())
         source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
-        print('source shape, type, device after device', source.shape, source.type(), source.get_device())
+        # print('source shape, type, device after device', source.shape, source.type(), source.get_device())
         img_transfer = transfer_mask(source, target, mask)
-        print('img_transfer.shape', img_transfer.shape, img_transfer.type())
+        # print('img_transfer.shape', img_transfer.shape, img_transfer.type())
         img_blend = blend_imgs(source, target, mask)
-        print('img_blend shape, device', img_blend.shape, img_blend.get_device())
+        # print('img_blend shape, device', img_blend.shape, img_blend.get_device())
         img_blend = img_blend.to(device)
-        print('img_blend device', img_blend.get_device())
+        # print('img_blend device', img_blend.get_device())
 
-        print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask[:, :1, :, :].shape, mask[:, :1, :, :].type())
+        # print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask[:, :1, :, :].shape, mask[:, :1, :, :].type())
         img_transfer_input = torch.cat((img_transfer, target, mask[:, :1, :, :]), dim=1)
-        print('img_transfer_input.shape', img_transfer_input.shape, img_transfer_input.get_device())
+        # print('img_transfer_input.shape', img_transfer_input.shape, img_transfer_input.get_device())
 
         img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input.to(device), 1)  # len(source[0])
-        print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape, img_transfer_input_pyd[0].get_device())
+        # print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape, img_transfer_input_pyd[0].get_device())
 
         # 2) Feed the data to the networks.
         # Blend images
         img_blend_pred = G([p.to(device) for p in img_transfer_input_pyd])
-        print('img_blend_pred shape, device', img_blend_pred.shape, img_blend_pred.get_device())
+        # print('img_blend_pred shape, device', img_blend_pred.shape, img_blend_pred.get_device())
 
 
         # Fake Detection and Loss
@@ -265,12 +269,12 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
 
         if iter_count % displayIter == 0:
             # Write to the log file.
-            trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_last_lr():.0e};\n'
-                              f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
-                              f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
-            print(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_lr()[0]:.0e};\n'
-                  f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
-                  f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
+            trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}\n'
+                              f'pixelwise={loss_pixelwise:0.4f}, id={loss_id:0.4f}, attr={loss_attr:0.4f}, rec={loss_rec:0.4f}, '
+                              f'g_gan={loss_G_GAN:0.4f}, d_gan={loss_D_total:0.4f}')
+            print(f'Epoch: {epoch_count} / {max_epochs}\n'
+                              f'pixelwise={loss_pixelwise:0.4f}, id={loss_id:0.4f}, attr={loss_attr:0.4f}, rec={loss_rec:0.4f}, '
+                              f'g_gan={loss_G_GAN:0.4f}, d_gan={loss_D_total:0.4f}')
 
         # Print out the losses here. Tqdm uses that to automatically print it
         # in front of the progress bar.
