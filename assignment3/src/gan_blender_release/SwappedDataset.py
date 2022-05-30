@@ -61,6 +61,8 @@ class SwappedDatasetLoader(Dataset):
         self.group2path_mapping = defaultdict(list)
         for file_path in self.file_paths:
             self.group2path_mapping[file_path.split('/')[-1].split('_')[0]].append(file_path)
+        corrupted_sets = {k: v for k, v in self.group2path_mapping.items() if len(v) != 4}
+        assert len(corrupted_sets) == 0, f'some of the image sets are corrupted\n{corrupted_sets}'
 
         print(f'initialized with {len(self.file_paths)} files. first path is', self.file_paths[0])
         print(f'different groups: {len(self.group2path_mapping)}. '
