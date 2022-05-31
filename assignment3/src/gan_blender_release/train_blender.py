@@ -181,21 +181,24 @@ def blend_imgs_bgr(source_img, target_img, mask):
     return output
 
 
-def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_tensor: torch.Tensor):
+def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_tensor: torch.Tensor, blend='alpha', alpha=0.5):
+    assert blend in ['alpha', 'poisson'], "'alpha' and 'poisson' blending methods are implemented at the moment"
     out_tensors = []
     for b in range(source_tensor.shape[0]):
         source_img = img_utils.tensor2bgr(source_tensor[b])
         target_img = img_utils.tensor2bgr(target_tensor[b])
-        mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
-        mask = np.round(mask * 255).astype('uint8')
-        out_bgr = blend_imgs_bgr(source_img, target_img, mask)
-        out_tensors.append(img_utils.bgr2tensor(out_bgr))
+        if blend == 'alpha':
+            img_blend = cv2.addWeighted(src1=source_tensor, alpha=alpha, src2=target_tensor, beta=1-alpha, gamma=0)
+        else:
+            mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
+            mask = np.round(mask * 255).astype('uint8')
+            out_bgr = blend_imgs_bgr(source_img, target_img, mask)
+            out_tensors.append(img_utils.bgr2tensor(out_bgr))
 
     return torch.cat(out_tensors, dim=0)
 
 
-def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, blend='alpha', alpha=0.5):
-    assert blend in ['alpha', 'poisson'], "'alpha' and 'poisson' blending methods are implemented at the moment"
+def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **blend_kwargs):
     G.train(True)
     D.train(True)
     epoch_count += 1
@@ -218,10 +221,8 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, blend
         img_transfer = transfer_mask(source, target, mask)
         # print('img_transfer.shape', img_transfer.shape, img_transfer.type())
 
-        if blend == 'alpha':
-            img_blend = cv2.addWeighted(src1=swap, alpha=alpha, src2=target, beta=1-alpha, gamma=0)
-        else:
-            img_blend = blend_imgs(swap, target, mask)
+
+        img_blend = blend_imgs(swap, target, mask, **blend_kwargs)
         # print('img_blend shape, device', img_blend.shape, img_blend.get_device())
         img_blend = img_blend.to(device)
         # print('img_blend device', img_blend.get_device())
