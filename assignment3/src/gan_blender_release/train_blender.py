@@ -188,7 +188,7 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
         source_img = img_utils.tensor2bgr(source_tensor[b])
         target_img = img_utils.tensor2bgr(target_tensor[b])
         if blend == 'alpha':
-            img_blend = cv2.addWeighted(src1=source_img, alpha=alpha, src2=target_img, beta=1-alpha, gamma=0)
+            out_bgr = cv2.addWeighted(src1=source_img, alpha=alpha, src2=target_img, beta=1-alpha, gamma=0)
         else:
             mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
             mask = np.round(mask * 255).astype('uint8')
