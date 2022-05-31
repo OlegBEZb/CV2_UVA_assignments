@@ -50,7 +50,7 @@ def make_dataset(dir):
 
 class SwappedDatasetLoader(Dataset):
 
-    def __init__(self, data_path, transform=None, resize=256):
+    def __init__(self, data_path, transform=None, resize=256, use_first_n=100):
         # Define your initializations and the transforms here. You can also
         # define your tensor transforms to normalize and resize your tensors.
         # As a rule of thumb, put anything that remains constant here.
@@ -69,9 +69,12 @@ class SwappedDatasetLoader(Dataset):
               f'first group: {self.group2path_mapping[list(self.group2path_mapping.keys())[0]]}')
         self.group_names = list(self.group2path_mapping.keys())
         self.resize = resize
+        self.use_first_n = use_first_n
 
     def __len__(self):
         # Return the length of the datastructure that is your dataset
+        if self.use_first_n:
+            return self.use_first_n
         return len(self.group2path_mapping)
 
     def __getitem__(self, index):

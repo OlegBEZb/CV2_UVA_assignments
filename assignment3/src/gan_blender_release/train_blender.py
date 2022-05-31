@@ -4,6 +4,7 @@ import math
 
 import torch
 import torch.nn.parallel
+from torchvision.utils import save_image
 import numpy as np
 from tqdm import tqdm
 import imageio
@@ -18,6 +19,7 @@ import img_utils
 # Fill in your experiment names and the other required components
 experiment_name = 'Blender'
 data_root = '/content/gdrive/MyDrive/CV_2/data_set/data'
+val_data_root = '/content/gdrive/MyDrive/CV_2/data_set/val_data'
 # data_root = '../../data_set/data_set/data'
 pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
 # pre_trained_models_path = '../../data_set/Pretrained_model'
@@ -144,13 +146,14 @@ print('[I] STATUS: Initiate Dataloaders...')
 
 from SwappedDataset import SwappedDatasetLoader
 
-train_loader = SwappedDatasetLoader(data_root, transform=None)  # global variables is all you need
+train_loader = SwappedDatasetLoader(data_root, transform=None, use_first_n=100)  # global variables is all you need
+val_loader = SwappedDatasetLoader(val_data_root, transform=None, use_first_n=100)  # global variables is all you need
 
 from torch.utils.data import DataLoader
 train_loader = DataLoader(train_loader, batch_size=batch_size, shuffle=True, num_workers=nthreads,
                           pin_memory=True, drop_last=True)
-# if val_dataset is not None:
-#     val_dataset = VideoSeqDataset(transform=img_transforms)
+val_loader = DataLoader(val_loader, batch_size=batch_size, shuffle=True, num_workers=nthreads,
+                        pin_memory=True, drop_last=True)
 print(done)
 
 print('[I] STATUS: Initiate Logs...', end='')
@@ -191,7 +194,8 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
     return torch.cat(out_tensors, dim=0)
 
 
-def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
+def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, blend='alpha', alpha=0.5):
+    assert blend in ['alpha', 'poisson'], "'alpha' and 'poisson' blending methods are implemented at the moment"
     G.train(True)
     D.train(True)
     epoch_count += 1
@@ -213,7 +217,11 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
         # print('source shape, type, device after device', source.shape, source.type(), source.get_device())
         img_transfer = transfer_mask(source, target, mask)
         # print('img_transfer.shape', img_transfer.shape, img_transfer.type())
-        img_blend = blend_imgs(source, target, mask)
+
+        if blend == 'alpha':
+            img_blend = cv2.addWeighted(src1=swap, alpha=alpha, src2=target, beta=1-alpha, gamma=0)
+        else:
+            img_blend = blend_imgs(swap, target, mask)
         # print('img_blend shape, device', img_blend.shape, img_blend.get_device())
         img_blend = img_blend.to(device)
         # print('img_blend device', img_blend.get_device())
@@ -272,17 +280,23 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
             trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}\n'
                               f'pixelwise={loss_pixelwise:0.4f}, id={loss_id:0.4f}, attr={loss_attr:0.4f}, rec={loss_rec:0.4f}, '
                               f'g_gan={loss_G_GAN:0.4f}, d_gan={loss_D_total:0.4f}')
-            print(f'Epoch: {epoch_count} / {max_epochs}\n'
-                              f'pixelwise={loss_pixelwise:0.4f}, id={loss_id:0.4f}, attr={loss_attr:0.4f}, rec={loss_rec:0.4f}, '
-                              f'g_gan={loss_G_GAN:0.4f}, d_gan={loss_D_total:0.4f}')
 
         # Print out the losses here. Tqdm uses that to automatically print it
         # in front of the progress bar.
+        print(f'Epoch: {epoch_count} / {max_epochs}\n'
+              f'pixelwise={loss_pixelwise:0.4f}, id={loss_id:0.4f}, attr={loss_attr:0.4f}, rec={loss_rec:0.4f}, '
+              f'g_gan={loss_G_GAN:0.4f}, d_gan={loss_D_total:0.4f}')
         pbar.set_description()
 
     # Save output of the network at the end of each epoch. The Generator
+    for i, img in enumerate(img_blend_pred):
+        save_image(os.path.join(visuals_loc, f'img_{i}_epoch_{epoch_count}.png'))
 
-    t_source, t_swap, t_target, t_pred, t_blend = Test(G)
+    test_data = Test(G)
+    t_source, t_target, t_swap, t_mask = test_data['source'].squeeze(), test_data['target'].squeeze(), test_data['swap'].squeeze(), test_data[
+        'mask'].squeeze()
+    # print('source before device', source.get_device())
+    t_source, t_target, t_swap, t_mask = t_source.to(device), t_target.to(device), t_swap.to(device), m_mask.to(device)
     for b in range(t_pred.shape[0]):
         total_grid_load = [t_source[b], t_swap[b], t_target[b],
                            t_pred[b], t_blend[b]]
@@ -339,7 +353,7 @@ def main():
         # You can also print out the losses of the network here to keep track of
         # epoch wise loss.
         total_loss = Train(G=generator, D=discriminator, epoch_count=epoch_count,
-                           iter_count=iter_count)  # love passing global variables
+                           iter_count=iter_count, blend='alpha')  # love passing global variables
 
         # total_loss = proces_epoch(train_loader, train=True)
         # if val_loader is not None:
