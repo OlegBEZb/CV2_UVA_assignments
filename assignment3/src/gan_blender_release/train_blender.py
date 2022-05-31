@@ -205,6 +205,13 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
     batches_train = math.floor(len(train_loader) / train_loader.batch_size)
     pbar = tqdm(enumerate(train_loader), total=batches_train, leave=False)
 
+    total_loss_pix = 0
+    total_loss_id = 0
+    total_loss_attr = 0
+    total_loss_rec = 0
+    total_loss_G_Gan = 0
+    total_loss_D_Gan = 0
+
     Epoch_time = time.time()
 
     for i, data in pbar:
@@ -264,6 +271,13 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
 
         loss_G_total = rec_weight * loss_rec + gan_weight * loss_G_GAN
 
+        total_loss_pix += loss_pixelwise
+        total_loss_id += loss_id
+        total_loss_attr += loss_attr
+        total_loss_rec += loss_rec
+        total_loss_G_Gan += loss_G_GAN
+        total_loss_D_Gan += loss_D_total
+
         # 5) Perform backward calculation.
         # 6) Perform the optimizer step.
         # Update generator weights
@@ -290,14 +304,8 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         pbar.set_description()
 
     # Save output of the network at the end of each epoch. The Generator
-    for i, img in enumerate(img_blend_pred):
-        save_image(os.path.join(visuals_loc, f'img_{i}_epoch_{epoch_count}.png'))
 
-    test_data = Test(G)
-    t_source, t_target, t_swap, t_mask = test_data['source'].squeeze(), test_data['target'].squeeze(), test_data['swap'].squeeze(), test_data[
-        'mask'].squeeze()
-    # print('source before device', source.get_device())
-    t_source, t_target, t_swap, t_mask = t_source.to(device), t_target.to(device), t_swap.to(device), m_mask.to(device)
+    t_source, t_swap, t_target, t_pred, t_blend = Test(G, **blend_kwargs)
     for b in range(t_pred.shape[0]):
         total_grid_load = [t_source[b], t_swap[b], t_target[b],
                            t_pred[b], t_blend[b]]
@@ -319,22 +327,29 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
            np.nanmean(total_loss_D_Gan), iter_count
 
 
-def Test(G):
+def Test(G, **blend_kwargs):
     with torch.no_grad():
         G.eval()
-        t = enumerate(testLoader)
-        i, (images) = next(t)
+        t = enumerate(val_loader)
+        i, images = next(t)
 
         # Feed the network with images from test set
+
+        source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
+        source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
+        img_transfer = transfer_mask(source, target, mask)
+        img_blend = blend_imgs(swap, target, mask, **blend_kwargs)
+        img_transfer_input = torch.cat((img_transfer, target, mask[:, :1, :, :]), dim=1).to(device)
 
         # Blend images
         pred = G(img_transfer_input)
         # You want to return 4 components:
         # 1) The source face.
-        # 2) The 3D reconsturction.
+        # 2) The 3D reconsturction. ?
         # 3) The target face.
         # 4) The prediction from the generator.
-        # 5) The GT Blend that the network is targettting.
+        # 5) The GT Blend that the network is targeting.
+        return source, swap, target, pred, img_blend
 
 
 def main():
@@ -356,11 +371,6 @@ def main():
         total_loss = Train(G=generator, D=discriminator, epoch_count=epoch_count,
                            iter_count=iter_count, blend='alpha')  # love passing global variables
 
-        # total_loss = proces_epoch(train_loader, train=True)
-        # if val_loader is not None:
-        #     with torch.no_grad():
-        #         total_loss = proces_epoch(val_loader, train=False)
-        #
         # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
         # if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
         #     scheduler_G.step(total_loss)
