@@ -45,31 +45,36 @@ def make_dataset(dir):
         if is_png(fname):
             path = os.path.join(dir, fname)
             files.append(path)
-
     return files
 
 
 class SwappedDatasetLoader(Dataset):
 
-    def __init__(self, data_path, transform=None, resize=256):
+    def __init__(self, data_path, transform=None, resize=256, use_first_n=100):
         # Define your initializations and the transforms here. You can also
         # define your tensor transforms to normalize and resize your tensors.
         # As a rule of thumb, put anything that remains constant here.
-        if os.path.isdir(data_path):
-            self.file_paths = make_dataset(data_path)
+        if not os.path.isdir(data_path):
+            raise
+        self.file_paths = make_dataset(data_path)
 
-            self.group2path_mapping = defaultdict(list)
-            for file_path in self.file_paths:
-                self.group2path_mapping[file_path.split('/')[-1].split('_')[0]].append(file_path)
+        self.group2path_mapping = defaultdict(list)
+        for file_path in self.file_paths:
+            self.group2path_mapping[file_path.split('/')[-1].split('_')[0]].append(file_path)
+        corrupted_sets = {k: v for k, v in self.group2path_mapping.items() if len(v) != 4}
+        assert len(corrupted_sets) == 0, f'some of the image sets are corrupted\n{corrupted_sets}'
 
-            print(f'initialized with {len(self.file_paths)} files. first path is', self.file_paths[0])
-            print(f'different groups: {len(self.group2path_mapping)}. '
-                  f'first group: {self.group2path_mapping[list(self.group2path_mapping.keys())[0]]}')
-            self.group_names = list(self.group2path_mapping.keys())
+        print(f'initialized with {len(self.file_paths)} files. first path is', self.file_paths[0])
+        print(f'different groups: {len(self.group2path_mapping)}. '
+              f'first group: {self.group2path_mapping[list(self.group2path_mapping.keys())[0]]}')
+        self.group_names = list(self.group2path_mapping.keys())
         self.resize = resize
+        self.use_first_n = use_first_n
 
     def __len__(self):
         # Return the length of the datastructure that is your dataset
+        if self.use_first_n:
+            return self.use_first_n
         return len(self.group2path_mapping)
 
     def __getitem__(self, index):
@@ -85,14 +90,23 @@ class SwappedDatasetLoader(Dataset):
         group_name = self.group_names[index]
         group_paths = self.group2path_mapping[group_name]
 
-        mask = cv2.imread([p for p in group_paths if '_sw_' in p][0])
-        mask = np.where(mask > 0, 1, mask)
+        try:
+            mask = cv2.imread([p for p in group_paths if '_mask_' in p][0])
+            mask = np.where(mask > 0, 1, mask)
+
+            source = cv2.imread([p for p in group_paths if '_fg_' in p][0])
+
+            target = cv2.imread([p for p in group_paths if '_bg_' in p][0])
+
+            swap = cv2.imread([p for p in group_paths if '_sw_' in p][0])
+        except:
+            print(f'was not able to find some files for {group_name}\nhaving the following paths:{group_paths}')
 
         # CV2 uses BGR by default
-        images_dict = {'source': rgb2tensor(cv2.imread([p for p in group_paths if '_fg_' in p][0])),
-                       'target': rgb2tensor(cv2.imread([p for p in group_paths if '_bg_' in p][0])),
-                       'swap': rgb2tensor(mask),
-                       'mask': rgb2tensor(cv2.imread([p for p in group_paths if '_mask_' in p][0])),
+        images_dict = {'source': rgb2tensor(source),
+                       'target': rgb2tensor(target),
+                       'swap': rgb2tensor(swap),
+                       'mask': rgb2tensor(mask),
                        }
         # print('images_dict\n', {k: v.shape for k,v in images_dict.items()})
         return images_dict

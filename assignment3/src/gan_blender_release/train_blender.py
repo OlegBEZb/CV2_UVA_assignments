@@ -1,7 +1,10 @@
 import os
 import time
+import math
+
 import torch
 import torch.nn.parallel
+from torchvision.utils import save_image
 import numpy as np
 from tqdm import tqdm
 import imageio
@@ -16,12 +19,16 @@ import img_utils
 # Fill in your experiment names and the other required components
 experiment_name = 'Blender'
 data_root = '/content/gdrive/MyDrive/data_set/data'
+val_data_root = '/content/gdrive/MyDrive/data_set/val_data'
+# data_root = '../../data_set/data_set/data'
+pre_trained_models_path = '/content/gdrive/MyDrive/data_set/Pretrained_model'
+# pre_trained_models_path = '../../data_set/Pretrained_model'
 train_list = ''
 test_list = ''
 batch_size = 8
-nthreads = 1
-max_epochs = 20
-displayIter = 20
+nthreads = 2
+max_epochs = 1  # 20
+displayIter = 10
 saveIter = 1
 img_resolution = 256
 
@@ -73,11 +80,9 @@ from discriminators_pix2pix import MultiscaleDiscriminator
 from res_unet import MultiScaleResUNet
 from utils import loadModels
 
-# pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
-pre_trained_models_path = '../../data_set/Pretrained_model'
-
 discriminator = MultiscaleDiscriminator().to(device)
 generator = MultiScaleResUNet(in_nc=7, out_nc=3).to(device)
+print('\ngenerator, discriminator devices are GPU', next(generator.parameters()).is_cuda, next(discriminator.parameters()).is_cuda)
 print(done)
 
 print('[I] STATUS: Load Networks...', end='')
@@ -94,6 +99,7 @@ discriminator, discrim_optim_state, checkpoint_iters_d = loadModels(discriminato
 generator, gen_optim_state, checkpoint_iters_g = loadModels(generator,
                                                             os.path.join(pre_trained_models_path, 'checkpoint_G.pth'),
                                                             device=device)
+print('\ngenerator, discriminator devices are GPU', next(generator.parameters()).is_cuda, next(discriminator.parameters()).is_cuda)
 
 print(done)
 
@@ -120,13 +126,13 @@ from gan_loss import GANLoss
 
 criterion_gan = GANLoss(use_lsgan=True).to(device)
 
-criterion_pixelwise = torch.nn.L1Loss()
+criterion_pixelwise = torch.nn.L1Loss().to(device)
 
 from vgg_loss import VGGLoss
 
-criterion_id = VGGLoss()
+criterion_id = VGGLoss().to(device)
 
-criterion_attr = VGGLoss()
+criterion_attr = VGGLoss().to(device)
 print(done)
 
 print('[I] STATUS: Initiate Dataloaders...')
@@ -140,14 +146,14 @@ print('[I] STATUS: Initiate Dataloaders...')
 
 from SwappedDataset import SwappedDatasetLoader
 
-data_root = '../../data_set/data_set/data'
-train_loader = SwappedDatasetLoader(data_root, transform=None)  # global variables is all you need
+train_loader = SwappedDatasetLoader(data_root, transform=None, use_first_n=100)  # global variables is all you need
+val_loader = SwappedDatasetLoader(val_data_root, transform=None, use_first_n=100)  # global variables is all you need
 
 from torch.utils.data import DataLoader
 train_loader = DataLoader(train_loader, batch_size=batch_size, shuffle=True, num_workers=nthreads,
                           pin_memory=True, drop_last=True)
-# if val_dataset is not None:
-#     val_dataset = VideoSeqDataset(transform=img_transforms)
+val_loader = DataLoader(val_loader, batch_size=batch_size, shuffle=True, num_workers=nthreads,
+                        pin_memory=True, drop_last=True)
 print(done)
 
 print('[I] STATUS: Initiate Logs...', end='')
@@ -175,25 +181,36 @@ def blend_imgs_bgr(source_img, target_img, mask):
     return output
 
 
-def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_tensor: torch.Tensor):
+def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_tensor: torch.Tensor, blend='alpha', alpha=0.5):
+    assert blend in ['alpha', 'poisson'], "'alpha' and 'poisson' blending methods are implemented at the moment"
     out_tensors = []
     for b in range(source_tensor.shape[0]):
         source_img = img_utils.tensor2bgr(source_tensor[b])
         target_img = img_utils.tensor2bgr(target_tensor[b])
-        mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
-        mask = np.round(mask * 255).astype('uint8')
-        out_bgr = blend_imgs_bgr(source_img, target_img, mask)
+        if blend == 'alpha':
+            out_bgr = cv2.addWeighted(src1=source_img, alpha=alpha, src2=target_img, beta=1-alpha, gamma=0)
+        else:
+            mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
+            mask = np.round(mask * 255).astype('uint8')
+            out_bgr = blend_imgs_bgr(source_img, target_img, mask)
         out_tensors.append(img_utils.bgr2tensor(out_bgr))
 
     return torch.cat(out_tensors, dim=0)
 
 
-def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
+def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **blend_kwargs):
     G.train(True)
     D.train(True)
     epoch_count += 1
-    batches_train = len(train_loader) / train_loader.batch_size
+    batches_train = math.floor(len(train_loader) / train_loader.batch_size)
     pbar = tqdm(enumerate(train_loader), total=batches_train, leave=False)
+
+    total_loss_pix = 0
+    total_loss_id = 0
+    total_loss_attr = 0
+    total_loss_rec = 0
+    total_loss_G_Gan = 0
+    total_loss_D_Gan = 0
 
     Epoch_time = time.time()
 
@@ -205,23 +222,29 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
         # being returned from your dataloader.
         # 1) Load and transfer data to device
         source, target, swap, mask = data['source'].squeeze(), data['target'].squeeze(), data['swap'].squeeze(), data['mask'].squeeze()
-        print('source.shape', source.shape, source.type())
+        # print('source before device', source.get_device())
+        source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
+        # print('source shape, type, device after device', source.shape, source.type(), source.get_device())
         img_transfer = transfer_mask(source, target, mask)
-        print('img_transfer.shape', img_transfer.shape, img_transfer.type())
-        img_blend = blend_imgs(source, target, mask)
-        print('img_blend.shape', img_blend.shape)
+        # print('img_transfer.shape', img_transfer.shape, img_transfer.type())
 
-        print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask.shape, mask.type())
-        img_transfer_input = torch.cat((img_transfer, target, mask), dim=2)
-        print('img_transfer_input.shape', img_transfer_input.shape)
 
-        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input, len(source[0]))
-        print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape)
+        img_blend = blend_imgs(swap, target, mask, **blend_kwargs)
+        # print('img_blend shape, device', img_blend.shape, img_blend.get_device())
+        img_blend = img_blend.to(device)
+        # print('img_blend device', img_blend.get_device())
+
+        # print('before concat', img_transfer.shape, img_transfer.type(), target.shape, target.type(), mask[:, :1, :, :].shape, mask[:, :1, :, :].type())
+        img_transfer_input = torch.cat((img_transfer, target, mask[:, :1, :, :]), dim=1)
+        # print('img_transfer_input.shape', img_transfer_input.shape, img_transfer_input.get_device())
+
+        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input.to(device), 1)  # len(source[0])
+        # print('len(img_transfer_input_pyd)', len(img_transfer_input_pyd), img_transfer_input_pyd[0].shape, img_transfer_input_pyd[0].get_device())
 
         # 2) Feed the data to the networks.
         # Blend images
-        img_blend_pred = G(img_transfer_input_pyd)
-        print('img_blend_pred.shape', img_blend_pred.shape)
+        img_blend_pred = G([p.to(device) for p in img_transfer_input_pyd])
+        # print('img_blend_pred shape, device', img_blend_pred.shape, img_blend_pred.get_device())
 
 
         # Fake Detection and Loss
@@ -248,6 +271,13 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
 
         loss_G_total = rec_weight * loss_rec + gan_weight * loss_G_GAN
 
+        total_loss_pix += loss_pixelwise
+        total_loss_id += loss_id
+        total_loss_attr += loss_attr
+        total_loss_rec += loss_rec
+        total_loss_G_Gan += loss_G_GAN
+        total_loss_D_Gan += loss_D_total
+
         # 5) Perform backward calculation.
         # 6) Perform the optimizer step.
         # Update generator weights
@@ -262,20 +292,20 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
 
         if iter_count % displayIter == 0:
             # Write to the log file.
-            # trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_lr()[0]:.0e};\n'
-            #                   f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
-            #                   f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
-            print(f'Epoch: {epoch_count} / {max_epochs}; LR: {scheduler_G.get_lr()[0]:.0e};\n'
-                  f'pixelwise={loss_pixelwise}, id={loss_id}, attr={loss_attr}, rec={loss_rec}, '
-                  f'g_gan={loss_G_GAN}, d_gan={loss_D_total}')
+            trainLogger.write(f'Epoch: {epoch_count} / {max_epochs}\n'
+                              f'pixelwise={loss_pixelwise:0.4f}, id={loss_id:0.4f}, attr={loss_attr:0.4f}, rec={loss_rec:0.4f}, '
+                              f'g_gan={loss_G_GAN:0.4f}, d_gan={loss_D_total:0.4f}')
 
         # Print out the losses here. Tqdm uses that to automatically print it
         # in front of the progress bar.
+        print(f'Epoch: {epoch_count} / {max_epochs}\n'
+              f'pixelwise={loss_pixelwise:0.4f}, id={loss_id:0.4f}, attr={loss_attr:0.4f}, rec={loss_rec:0.4f}, '
+              f'g_gan={loss_G_GAN:0.4f}, d_gan={loss_D_total:0.4f}')
         pbar.set_description()
 
     # Save output of the network at the end of each epoch. The Generator
 
-    t_source, t_swap, t_target, t_pred, t_blend = Test(G)
+    t_source, t_swap, t_target, t_pred, t_blend = Test(G, **blend_kwargs)
     for b in range(t_pred.shape[0]):
         total_grid_load = [t_source[b], t_swap[b], t_target[b],
                            t_pred[b], t_blend[b]]
@@ -297,22 +327,29 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count):
            np.nanmean(total_loss_D_Gan), iter_count
 
 
-def Test(G):
+def Test(G, **blend_kwargs):
     with torch.no_grad():
         G.eval()
-        t = enumerate(testLoader)
-        i, (images) = next(t)
+        t = enumerate(val_loader)
+        i, images = next(t)
 
         # Feed the network with images from test set
+
+        source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
+        source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
+        img_transfer = transfer_mask(source, target, mask)
+        img_blend = blend_imgs(swap, target, mask, **blend_kwargs)
+        img_transfer_input = torch.cat((img_transfer, target, mask[:, :1, :, :]), dim=1).to(device)
 
         # Blend images
         pred = G(img_transfer_input)
         # You want to return 4 components:
         # 1) The source face.
-        # 2) The 3D reconsturction.
+        # 2) The 3D reconsturction. ?
         # 3) The target face.
         # 4) The prediction from the generator.
-        # 5) The GT Blend that the network is targettting.
+        # 5) The GT Blend that the network is targeting.
+        return source, swap, target, pred, img_blend
 
 
 def main():
@@ -332,13 +369,8 @@ def main():
         # You can also print out the losses of the network here to keep track of
         # epoch wise loss.
         total_loss = Train(G=generator, D=discriminator, epoch_count=epoch_count,
-                           iter_count=iter_count)  # love passing global variables
+                           iter_count=iter_count, blend='alpha')  # love passing global variables
 
-        # total_loss = proces_epoch(train_loader, train=True)
-        # if val_loader is not None:
-        #     with torch.no_grad():
-        #         total_loss = proces_epoch(val_loader, train=False)
-        #
         # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
         # if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
         #     scheduler_G.step(total_loss)
