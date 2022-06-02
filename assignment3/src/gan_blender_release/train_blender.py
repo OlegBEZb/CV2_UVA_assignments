@@ -18,10 +18,10 @@ import img_utils
 ######################################################################
 # Fill in your experiment names and the other required components
 experiment_name = 'Blender'
-data_root = '/content/gdrive/MyDrive/data_set/data'
-val_data_root = '/content/gdrive/MyDrive/data_set/val_data'
+data_root = '/content/gdrive/MyDrive/CV_2/data_set/data'
+val_data_root = '/content/gdrive/MyDrive/CV_2/data_set/val_data'
 # data_root = '../../data_set/data_set/data'
-pre_trained_models_path = '/content/gdrive/MyDrive/data_set/Pretrained_model'
+pre_trained_models_path = '/content/gdrive/MyDrive/CV_2/data_set/Pretrained_model'
 # pre_trained_models_path = '../../data_set/Pretrained_model'
 train_list = ''
 test_list = ''
