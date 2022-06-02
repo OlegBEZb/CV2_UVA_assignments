@@ -321,10 +321,10 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
                      checkpoint_pattern % ('D', epoch_count))
     tqdm.write('[!] Model Saved!')
 
-    return np.nanmean(total_loss_pix.cpu()), \
-           np.nanmean(total_loss_id.cpu()), np.nanmean(total_loss_attr.cpu()), \
-           np.nanmean(total_loss_rec.cpu()), np.nanmean(total_loss_G_Gan.cpu()), \
-           np.nanmean(total_loss_D_Gan.cpu()), iter_count.cpu()
+    return np.nanmean(total_loss_pix.detach().numpy().cpu()), \
+           np.nanmean(total_loss_id.detach().numpy().cpu()), np.nanmean(total_loss_attr.detach().numpy().cpu()), \
+           np.nanmean(total_loss_rec.detach().numpy().cpu()), np.nanmean(total_loss_G_Gan.detach().numpy().cpu()), \
+           np.nanmean(total_loss_D_Gan.detach().numpy().cpu()), iter_count.detach().numpy().cpu()
 
 
 def Test(G, **blend_kwargs):
