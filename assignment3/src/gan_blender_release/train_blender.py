@@ -324,7 +324,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
     return np.nanmean(total_loss_pix.cpu().detach().numpy()), \
            np.nanmean(total_loss_id.cpu().detach().numpy()), np.nanmean(total_loss_attr.cpu().detach().numpy()), \
            np.nanmean(total_loss_rec.cpu().detach().numpy()), np.nanmean(total_loss_G_Gan.cpu().detach().numpy()), \
-           np.nanmean(total_loss_D_Gan.cpu().detach().numpy()), iter_count.cpu().detach().numpy()
+           np.nanmean(total_loss_D_Gan.detach().numpy()), iter_count.cpu().detach().numpy()
 
 
 def Test(G, **blend_kwargs):
