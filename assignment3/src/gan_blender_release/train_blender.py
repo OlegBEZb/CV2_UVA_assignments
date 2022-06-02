@@ -15,7 +15,7 @@ import img_utils
 ######################################################################
 # Fill in your experiment names and the other required components
 experiment_name = 'Blender'
-data_root = '/content/gdrive/MyDrive/CV_2/data_set/data'
+data_root = '/content/gdrive/MyDrive/data_set/data'
 train_list = ''
 test_list = ''
 batch_size = 8
