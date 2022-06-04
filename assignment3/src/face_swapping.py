@@ -7,6 +7,7 @@ import openface
 import cv2
 import matplotlib.pyplot as plt
 import torch
+from PIL import Image
 
 # import sys
 # sys.path.insert(1, '~/Documents/MSc AI/ComputerVision2/assignment3/cv2_2022_assignment3/supplemental_code/supplemental_code')
@@ -292,8 +293,11 @@ def texturing_for_faceswap(G, color, triangles, shape, mask):
     G[:,1] += -y_min + x_correction
 
     # if image will be used for faceswap, image should be of the same size
-    width, height, _ = shape
-
+    height, width, _ = shape
+    # print("in texturing for face swap")
+    # print("width ", width.shape)
+    # print("height ", height.shape)
+    save_obj("probeersel.obj", G, color, triangles)
     image = render(G, color, triangles.astype(int), H=height, W=width)
     return image
 
@@ -323,6 +327,7 @@ def texturing(G, color, triangles):
 
 def find_ground_truth_landmarks(person):
     ground_truth = predict_landmarks(person)
+    # visualize_landmarks(person, ground_truth, 7)
 
     x_translate = np.min(ground_truth[:,0]) + (np.max(ground_truth[:,0]) - np.min(ground_truth[:,0]))/2
     y_translate = np.min(ground_truth[:,1]) + (np.max(ground_truth[:,1]) - np.min(ground_truth[:,1]))/2
@@ -344,9 +349,10 @@ def optimize_geometry(ground_truth_landmarks, file_name):
     old_loss = np.inf
     new_loss = 10000000
 
-    epsilon = 0.01
+    epsilon = 0.00001
     i = 0
     while (abs(old_loss - new_loss) > epsilon):
+    # while (i < 100):
         optim.zero_grad()
         old_loss = new_loss
         G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
@@ -354,6 +360,14 @@ def optimize_geometry(ground_truth_landmarks, file_name):
         G_lm = G[indices_model,:]
         G_new = (general_rotation(omega) @ G_lm.T).T + t
         predicted = convertTo2D(G_new)
+
+        # if i % 1000 == 0:
+        #     tmp_predicted = predicted.detach().numpy()
+        #     # gt = ground_truths[0].detach().numpy()
+        #     plt.scatter(tmp_predicted[:,0],tmp_predicted[:,1],label="predicted")
+        #     plt.scatter(ground_truth_landmarks[:,0], ground_truth_landmarks[:,1], label="ground truth")
+        #     plt.legend()
+        #     plt.show()
 
         loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth_landmarks))**2)
 
@@ -366,11 +380,24 @@ def optimize_geometry(ground_truth_landmarks, file_name):
 
         loss_fit.backward()
 
+        alpha.register_hook(lambda grad: torch.clamp(grad, -1, 1))
+        delta.register_hook(lambda grad: torch.clamp(grad, -1, 1))
+
         optim.step()
 
         new_loss = loss_fit.item()
         i = i+1
-        break
+        # break
+
+        # if (abs(old_loss - new_loss) < epsilon):
+        #     tmp_predicted = predicted.detach().numpy()
+        #     # gt = ground_truths[0].detach().numpy()
+        #     tmp_predicted[:,1] = -tmp_predicted[:,1]
+        #     plt.scatter(tmp_predicted[:,0],tmp_predicted[:,1],label="predicted")
+        #     ground_truth_landmarks[:,1] = -ground_truth_landmarks[:,1]
+        #     plt.scatter(ground_truth_landmarks[:,0], ground_truth_landmarks[:,1], label="ground truth")
+        #     plt.legend()
+        #     plt.show()
 
     G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
     G_new_def = (general_rotation(omega) @ G_def.T).T + t
@@ -378,10 +405,71 @@ def optimize_geometry(ground_truth_landmarks, file_name):
 
     return G_new_def, alpha, delta, omega, t
 
+def optimized_geometry_multiple(gt_landmarks_list, names_list):
+    indices_model = np.loadtxt("Landmarks68_model2017-1_face12_nomouth.anl")
+    alpha = [torch.autograd.Variable(torch.randn(30,), requires_grad=True)]
+    deltas = []
+    omegas = []
+    ts = []
+    for _ in gt_landmarks_list:
+        deltas.append(torch.autograd.Variable(torch.randn(20,), requires_grad=True))
+        omegas.append(torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True))
+        ts.append(torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True))
+    optim = torch.optim.Adam(alpha + deltas + omegas + ts, lr=0.05)
+
+    old_loss = np.inf
+    new_loss = 10000000
+
+    epsilon = 0.001
+    j = 0
+    while (abs(old_loss - new_loss) > epsilon):
+    # while (j < 25):
+        print("prediction #",j)
+
+        optim.zero_grad()
+        old_loss = new_loss
+
+        losses = torch.zeros(len(gt_landmarks_list))
+        for i in range(len(gt_landmarks_list)):
+            G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha[0] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+
+            G_lm = G[indices_model,:]
+
+            G_new = (general_rotation(omegas[i]) @ G_lm.T).T + ts[i]
+            predicted = convertTo2D(G_new)
+
+            loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(gt_landmarks_list[i]))**2)
+
+            lambda_alpha = 1
+            lambda_delta = 1
+            loss_reg = lambda_alpha * torch.sum(alpha[0]**2) + lambda_delta * torch.sum(deltas[i]**2)
+
+            loss_fit = loss_lan + loss_reg
+
+            losses[i] = loss_fit
+
+        loss_combi = torch.mean(torch.Tensor(losses))
+        print(loss_combi.item())
+        loss_combi.backward()
+
+        optim.step()
+
+        new_loss = loss_combi.item()
+        j = j+1
+
+    Gs = []
+    for i in range(len(gt_landmarks_list)):
+        G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha[0] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+        G_new_def = (general_rotation(omegas[i]) @ G_def.T).T + ts[i]
+        save_obj(names_list[i], G_new_def.detach().numpy(), color, triangles)
+        Gs.append(G_new_def)
+
+    return Gs, alpha, deltas, omegas, ts
+
 def optimized_geometry_video(video_path):
     vidcap = cv2.VideoCapture(video_path)
     success,image = vidcap.read()
-    count = 1
+    count = 0
     while success:
         cv2.imwrite("frame%d.jpg" % count, image)  # save frame as JPEG file
         success,image = vidcap.read()
@@ -390,9 +478,16 @@ def optimized_geometry_video(video_path):
 
     frames = []
     for no in range(count):
-        frame = cv2.imread("frame%d.jpg" % no)
-        frame = torch.from_numpy(frame)
-        frames.append(frame)
+        if no % 10 == 0:
+            frame = cv2.imread("frame%d.jpg" % no)
+            frame = frame[100:550, 50:500]
+            frame = cv2.resize(frame, (256,256), interpolation = cv2.INTER_AREA)
+
+            # plt.imshow(frame)
+            # plt.show()
+            frame = torch.from_numpy(frame)
+            frames.append(frame)
+    print("len frames: ", len(frames))
 
     ground_truths = []
     for frame in frames:
@@ -403,7 +498,7 @@ def optimized_geometry_video(video_path):
     deltas = []
     omegas = []
     ts = []
-    for no in range(count):
+    for no in range(len(frames)):
         deltas.append(torch.autograd.Variable(torch.randn(20,), requires_grad=True))
         omegas.append(torch.autograd.Variable(torch.Tensor([0,0,0]),requires_grad=True))
         ts.append(torch.autograd.Variable(torch.Tensor([0,0,-200]), requires_grad=True))
@@ -412,16 +507,17 @@ def optimized_geometry_video(video_path):
     old_loss = np.inf
     new_loss = 10000000
 
-    epsilon = 0.00001
+    epsilon = 0.01
     j = 0
     while (abs(old_loss - new_loss) > epsilon):
+    # while (j < 25):
         print("prediction #",j)
 
         optim.zero_grad()
         old_loss = new_loss
 
-        losses = torch.zeros(count)
-        for i in range(count):
+        losses = torch.zeros(len(frames))
+        for i in range(len(frames)):
             G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha[0] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
 
             G_lm = G[indices_model,:]
@@ -448,30 +544,94 @@ def optimized_geometry_video(video_path):
         new_loss = loss_combi.item()
         j = j+1
 
-    return alpha, deltas, omegas, ts
+    Gs = []
+    for i in range(len(frames)):
+        G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha[0] * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (deltas[i] * torch.sqrt(torch.Tensor(expr_pcavariance20)))
+        G_new_def = (general_rotation(omegas[i]) @ G_def.T).T + ts[i]
+        Gs.append(G_new_def)
 
-def faceswap_video(bg_video_path, fg_image_path):
-    bg_alpha, bg_deltas, bg_omegas, bg_ts = optimized_geometry_video(bg_video_path)
+    return frames, Gs, alpha, deltas, omegas, ts
+
+def face_swapping_video(bg_video_path, fg_image_path):
+    bg_frames, bg_Gs, bg_alpha, bg_deltas, bg_omegas, bg_ts = optimized_geometry_video(bg_video_path)
+    print("optimized_geometry_video done")
+
     fg_img = cv2.imread(fg_image_path)
+    fg_img = cv2.resize(fg_img, (256,256), interpolation = cv2.INTER_AREA)
     fg_img  = torch.from_numpy(fg_img)
     fg_ground_truth = find_ground_truth_landmarks(fg_img)
 
-    fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg_image")
+    fg_G, fg_alpha, fg_delta, fg_omega, fg_t = optimize_geometry(fg_ground_truth, "fg_image")
+    print("optimize_geometry done")
 
-    # all_images = []
-    # for delta, omega, t in zip(bg_deltas, bg_omegas, bg_ts):
+    all_images = []
+    counting = 0
+    print("Nu nog")
+    print(len(bg_frames))
+    print("loops")
+    for bg_frame, bg_omega, bg_t in zip(bg_frames, bg_omegas, bg_ts):
+        print(counting)
+        fg_adopted = (general_rotation(bg_omega) @ fg_G.T).T + bg_t
+        print("fg_adopted shape", fg_adopted.shape)
+        bg_landmarks = predict_landmarks(bg_frame)
+        # render an image of the new face, using the position of the face in the original image
+        mask = np.full(bg_frame.shape, 255, dtype=np.uint8)
+        print("mask shape ", mask.shape)
+        forehead = bg_landmarks[17:27]
+        forehead[:,1] += -35
+        roi_corners = np.array([np.concatenate((bg_landmarks[:17], # chin
+                                                forehead[::-1], # eyebrows
+                                                ), axis=0)], dtype=np.int32)
+        channel_count = bg_frame.shape[2]
+        ignore_mask_color = (0,)*channel_count
+        cv2.fillPoly(mask, roi_corners, ignore_mask_color)
 
+        fg_adopted_img = texturing_for_faceswap(fg_adopted.detach().numpy(), color, triangles, bg_frame.shape, mask)
+        print("fg_adopted_img shape", fg_adopted_img.shape)
+        # plt.imshow(fg_adopted_img)
+        # plt.show()
+        # first version
+        # swapped = np.where(mask, (bg_frame.detach().numpy()/255)[..., ::-1], fg_adopted_img)
+        # plt.imshow(swapped)
+        # plt.axis("off")
+        # plt.show()
 
+        # second version swapped
+        new_mask = np.tile(np.any(fg_adopted_img > 0, axis=2, keepdims=True), (1, 1, 3))
+        print("new_mask shape ", new_mask.shape)
+        new_bg = np.copy(bg_frame)
+        print("new_bg shape", new_bg.shape)
+        new_bg[new_mask] = 0
+        new_output = np.where(new_mask, fg_adopted_img, (new_bg/255)[..., ::-1])
 
-    # out = cv2.VideoWriter('project.avi',cv2.VideoWriter_fourcc(*'DIVX'), 15, size)
+        plt.imshow(new_output)
+        plt.axis("off")
+        plt.savefig("faceswap%d.jpg" % counting)
+        # plt.show()
 
-    # for i in range(len(img_array)):
-    #     out.write(img_array[i])
-    # out.release()
+        # im = Image.fromarray(new_output)
+        # im.save("faceswap%d.jpg" % counting)
+        # cv2.imwrite("faceswap%d.jpg" % counting, new_output)  # save frame as JPEG file
+
+        all_images.append(new_output)
+        counting += 1
+
+    out = cv2.VideoWriter('TEST.avi',cv2.VideoWriter_fourcc(*'DIVX'), 15, (bg_frame.shape[0],bg_frame.shape[1]))
+
+    for i in range(len(all_images)):
+        out.write(all_images[i])
+    out.release()
+
+    print("KLAAR?")
 
 def face_swapping(fg_path, bg_path):
     fg = cv2.imread(fg_path)
+    fg = cv2.resize(fg, (256,256), interpolation = cv2.INTER_AREA)
     bg = cv2.imread(bg_path)
+    bg = cv2.resize(bg, (256,256), interpolation = cv2.INTER_AREA)
+
+    print(fg.shape)
+    print(bg.shape)
 
     fg  = torch.from_numpy(fg)
     bg  = torch.from_numpy(bg)
@@ -485,7 +645,7 @@ def face_swapping(fg_path, bg_path):
     fg_adopted = (general_rotation(bg_omega) @ fg_G.T).T + bg_t
 
     bg_landmarks = predict_landmarks(bg)
-
+    print("bg landmarks", bg_landmarks)
     # render an image of the new face, using the position of the face in the original image
     mask = np.full(bg.shape, 255, dtype=np.uint8)
     forehead = bg_landmarks[17:27]
@@ -513,5 +673,30 @@ def face_swapping(fg_path, bg_path):
     plt.axis("off")
     plt.show()
 
+def train_model(img_path, name):
+    image = cv2.imread(img_path)
+    image = torch.from_numpy(image)
 
-face_swapping("cropped_fg.png", "cropped_bg.png")
+    gt_landmarks = find_ground_truth_landmarks(image)
+    G, alpha, delta, omega, t = optimize_geometry(gt_landmarks, name)
+
+def train_model_multiple(img_path_list, names_list):
+    gt_landmarks_list = []
+    for img_path in img_path_list:
+        image = cv2.imread(img_path)
+        image = torch.from_numpy(image)
+        gt_landmarks = find_ground_truth_landmarks(image)
+        gt_landmarks_list.append(gt_landmarks)
+
+    Gs, alpha, deltas, omegas, ts = optimized_geometry_multiple(gt_landmarks_list, names_list)
+    print(Gs)
+    print(alpha)
+    print(deltas)
+    print(omegas)
+
+train_model_multiple(["img1.jpg", "img2.jpg", "img3.jpg"], ["multiple1.obj", "multiple2.obj", "multiple3.obj"])
+# train_model("person.jpeg", "person_model")
+# train_model("person2.jpeg", "person2_model")
+# face_swapping("person.jpeg", "person2.jpeg")
+# face_swapping("../images/cropped_fg.png", "../images/cropped_bg.png")
+# face_swapping_video("../emotions.mp4", "person2.jpeg")
