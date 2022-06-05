@@ -403,37 +403,37 @@ import torch
 from PIL import Image
 
 
-bfm = h5py.File("/content/gdrive/MyDrive/CV_2/model2017-1_face12_nomouth.h5", 'r')
+# bfm = h5py.File("/content/gdrive/MyDrive/CV_2/model2017-1_face12_nomouth.h5", 'r')
 
-# Select a specific weight from BFM
-id_mean = np.asarray(bfm['shape/model/mean'], dtype=np.float32) # 3N
-# Sometimes you will need to reshape it to a proper shape
-id_mean = np.reshape(id_mean, (-1,3))
+# # Select a specific weight from BFM
+# id_mean = np.asarray(bfm['shape/model/mean'], dtype=np.float32) # 3N
+# # Sometimes you will need to reshape it to a proper shape
+# id_mean = np.reshape(id_mean, (-1,3))
 
-id_pcabasis = np.asarray(bfm['shape/model/pcaBasis'], dtype=np.float32) # 3N x 199
-id_pcabasis = np.reshape(id_pcabasis, (-1,3,199))
-id_pcabasis30 = id_pcabasis[:,:,:30]
+# id_pcabasis = np.asarray(bfm['shape/model/pcaBasis'], dtype=np.float32) # 3N x 199
+# id_pcabasis = np.reshape(id_pcabasis, (-1,3,199))
+# id_pcabasis30 = id_pcabasis[:,:,:30]
 
-id_pcavariance = np.asarray(bfm['shape/model/pcaVariance'], dtype=np.float32) #199
-id_pcavariance30 = id_pcavariance[:30]
+# id_pcavariance = np.asarray(bfm['shape/model/pcaVariance'], dtype=np.float32) #199
+# id_pcavariance30 = id_pcavariance[:30]
 
-expr_mean = np.asarray(bfm['expression/model/mean'], dtype=np.float32) # 3N
-expr_mean = np.reshape(expr_mean, (-1,3))
+# expr_mean = np.asarray(bfm['expression/model/mean'], dtype=np.float32) # 3N
+# expr_mean = np.reshape(expr_mean, (-1,3))
 
-expr_pcabasis = np.asarray(bfm['expression/model/pcaBasis'], dtype=np.float32) # 3N x 100
-expr_pcabasis = np.reshape(expr_pcabasis, (-1,3,100))
-expr_pcabasis20 = expr_pcabasis[:,:,:20]
+# expr_pcabasis = np.asarray(bfm['expression/model/pcaBasis'], dtype=np.float32) # 3N x 100
+# expr_pcabasis = np.reshape(expr_pcabasis, (-1,3,100))
+# expr_pcabasis20 = expr_pcabasis[:,:,:20]
 
-expr_pcavariance = np.asarray(bfm['expression/model/pcaVariance'], dtype=np.float32) # 100
-expr_pcavariance20 = expr_pcavariance[:20]
+# expr_pcavariance = np.asarray(bfm['expression/model/pcaVariance'], dtype=np.float32) # 100
+# expr_pcavariance20 = expr_pcavariance[:20]
 
-alpha = np.random.uniform(-1,1,30)
-delta = np.random.uniform(-1,1,20)
+# alpha = np.random.uniform(-1,1,30)
+# delta = np.random.uniform(-1,1,20)
 
-color = np.asarray(bfm['color/model/mean'], dtype=np.float32)
-color = np.reshape(color, (-1,3))
+# color = np.asarray(bfm['color/model/mean'], dtype=np.float32)
+# color = np.reshape(color, (-1,3))
 
-triangles = np.asarray(bfm['shape/representer/cells'], dtype=np.float32).T # 3xK
+# triangles = np.asarray(bfm['shape/representer/cells'], dtype=np.float32).T # 3xK
 
 # MOETEN WE NOG FIXEN MET EEN IMPORT
 def save_obj(file_path, shape, color, triangles):
