@@ -27,7 +27,7 @@ train_list = ''
 test_list = ''
 batch_size = 8
 nthreads = 2
-max_epochs = 50 #20
+max_epochs = 20 
 displayIter = 10
 saveIter = 1
 img_resolution = 256
@@ -293,9 +293,9 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         optimizer_G.step()
 
         # Update discriminator weights
-        optimizer_D.zero_grad()
-        loss_D_total.backward()
-        optimizer_D.step()
+        # optimizer_D.zero_grad()
+        # loss_D_total.backward()
+        # optimizer_D.step()
 
         if iter_count % displayIter == 0:
             # Write to the log file.
