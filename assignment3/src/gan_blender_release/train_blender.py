@@ -269,7 +269,8 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         loss_attr = criterion_attr(img_blend_pred, img_blend)
         loss_rec = pix_weight * loss_pixelwise + 0.5 * loss_id + 0.5 * loss_attr
 
-        loss_G_total = rec_weight * loss_rec + gan_weight * loss_G_GAN
+        # loss_G_total = rec_weight * loss_rec + gan_weight * loss_G_GAN
+        loss_G_total = criterion_gan(pred_fake_pool, True)
 
         total_loss_pix += loss_pixelwise
         total_loss_id += loss_id
