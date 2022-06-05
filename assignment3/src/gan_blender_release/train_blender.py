@@ -390,7 +390,7 @@ def Test(G, type='normal', **blend_kwargs):
                 swap.append(torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA)),(1,2,0)))
                 mask.append(torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA)),(1,2,0)))
 
-            source, target, swap, mask = torch.Tensor(source), torch.Tensor(target), torch.Tensor(swap), torch.Tensor(mask)
+            # source, target, swap, mask = torch.Tensor(source), torch.Tensor(target), torch.Tensor(swap), torch.Tensor(mask)
 
 
         elif type == "dl":
