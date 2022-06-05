@@ -275,12 +275,12 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         pred_fake_pool = D([x.detach() for x in img_blend_pred_pyd])
         loss_G_total = criterion_gan(pred_fake_pool, True)
 
-        total_loss_pix += loss_pixelwise
-        total_loss_id += loss_id
-        total_loss_attr += loss_attr
-        total_loss_rec += loss_rec
-        total_loss_G_Gan += loss_G_GAN
-        total_loss_D_Gan += loss_D_total
+        # total_loss_pix += loss_pixelwise
+        # total_loss_id += loss_id
+        # total_loss_attr += loss_attr
+        # total_loss_rec += loss_rec
+        # total_loss_G_Gan += loss_G_GAN
+        # total_loss_D_Gan += loss_D_total
 
         # 5) Perform backward calculation.
         # 6) Perform the optimizer step.
