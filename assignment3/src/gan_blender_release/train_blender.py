@@ -388,7 +388,7 @@ def Test(G, type='normal', **blend_kwargs):
                 target.append(cv2.imread(f"../images_Emily/{combi[0]}_fg_{combi[1]}.png"))
                 swap.append(cv2.imread(f"../images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"))
                 mask.append(cv2.imread(f"../images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"))
-            source, target, swap, mask = np.asarray(source), np.asarray(target), np.asarray(swap), np.asarray(mask)
+            source, target, swap, mask = np.hstack(source), np.hstack(target), np.hstack(swap), np.hstack(mask)
 
             print("ONZE DATALOADER")
             print(source.shape)
