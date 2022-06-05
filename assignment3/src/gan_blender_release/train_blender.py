@@ -384,12 +384,12 @@ def Test(G, type='normal', **blend_kwargs):
             swap = []
             mask = []
             for combi in combinations:
-                source_img = cv2.imread(f"../images_Emily/{combi[0]}_bg_{combi[2]}.png")
+                source_img = cv2.imread(f"../../images_Emily/{combi[0]}_bg_{combi[2]}.png")
                 print(source_img.shape)
-                source.append(cv2.imread(f"../images_Emily/{combi[0]}_bg_{combi[2]}.png"))
-                target.append(cv2.imread(f"../images_Emily/{combi[0]}_fg_{combi[1]}.png"))
-                swap.append(cv2.imread(f"../images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"))
-                mask.append(cv2.imread(f"../images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"))
+                source.append(cv2.imread(f"../../images_Emily/{combi[0]}_bg_{combi[2]}.png"))
+                target.append(cv2.imread(f"../../images_Emily/{combi[0]}_fg_{combi[1]}.png"))
+                swap.append(cv2.imread(f"../../images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"))
+                mask.append(cv2.imread(f"../../images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"))
             source, target, swap, mask = np.vstack(source), np.vstack(target), np.vstack(swap), np.vstack(mask)
 
             print("ONZE DATALOADER")
