@@ -270,7 +270,6 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         loss_rec = pix_weight * loss_pixelwise + 0.5 * loss_id + 0.5 * loss_attr
 
         # loss_G_total = rec_weight * loss_rec + gan_weight * loss_G_GAN
-        img_transfer_input_pyd = img_utils.create_pyramid(img_transfer_input.to(device), 1)
         img_blend_pred = G([p.to(device) for p in img_transfer_input_pyd])
         img_blend_pred_pyd = img_utils.create_pyramid(img_blend_pred, len(source[0]))
         pred_fake_pool = D([x.detach() for x in img_blend_pred_pyd])
