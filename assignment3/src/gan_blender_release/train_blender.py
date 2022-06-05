@@ -349,7 +349,6 @@ def Test(G, type='normal', **blend_kwargs):
         # Feed the network with images from test set
         source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
         print(source.shape)
-        print(type(source[0][0][0][0]))
 
         if type == "normal":
             t = enumerate(val_loader)
@@ -393,7 +392,6 @@ def Test(G, type='normal', **blend_kwargs):
                 mask.append(torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA)),(2,1,0)))
 
             source, target, swap, mask = torch.stack(source), torch.stack(target), torch.stack(swap), torch.stack(mask)
-            print(type(source[0][0][0][0]))
             print(source.shape)
             print(target.shape)
             print(swap.shape)
@@ -814,7 +812,7 @@ def main():
         # You can also print out the losses of the network here to keep track of
         # epoch wise loss.
         Train(G=generator, D=discriminator, epoch_count=i,
-                           iter_count=iter_count, blend='alpha')  # love passing global variables
+                           iter_count=iter_count, blend='poisson')  # love passing global variables
 
         # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
         # if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
