@@ -225,6 +225,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         # being returned from your dataloader.
         # 1) Load and transfer data to device
         source, target, swap, mask = data['source'].squeeze(), data['target'].squeeze(), data['swap'].squeeze(), data['mask'].squeeze()
+        test = predict_landmarks(source)
         # print('source before device', source.get_device())
         source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
         # print('source shape, type, device after device', source.shape, source.type(), source.get_device())
@@ -517,7 +518,10 @@ predictor = openface.AlignDlib("shape_predictor_68_face_landmarks.dat")
 
 def predict_landmarks(img):
   img = img.detach().numpy()
-  dets = detector(img, 1)
+  print(type(img))
+  print(img[0,0])
+  print(img.shape)
+  dets = detector(img/255, 1)
   if len(dets) < 1:
     return None # Face Not Found
 
