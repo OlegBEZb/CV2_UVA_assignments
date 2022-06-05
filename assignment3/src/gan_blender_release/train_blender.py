@@ -388,8 +388,8 @@ def Test(G, type='normal', **blend_kwargs):
                 print(source_img.shape)
                 source.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_bg_{combi[2]}.png"),0,-1))
                 target.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_fg_{combi[1]}.png"),0,-1))
-                swap.append(cv2.resize(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),0,-1),(224,224),interpolation = cv2.INTER_AREA))
-                mask.append(cv2.resize(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),0,-1),(224,224),interpolation = cv2.INTER_AREA))
+                swap.append(np.swapaxes(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA),0,-1))
+                mask.append(np.swapaxes(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA),0,-1))
             source, target, swap, mask = torch.Tensor(source), torch.Tensor(target), torch.Tensor(swap), torch.Tensor(mask)
 
             print("ONZE DATALOADER")
