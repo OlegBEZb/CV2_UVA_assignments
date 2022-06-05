@@ -348,6 +348,7 @@ def Test(G, type='normal', **blend_kwargs):
 
         # Feed the network with images from test set
         source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
+        print(source.shape)
 
         if type == "normal":
             t = enumerate(val_loader)
