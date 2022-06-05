@@ -231,6 +231,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         print("mask shape", mask.shape)
         plt.imshow(np.swapaxes(source[0], 0, -1))
         plt.show()
+        plt.savefig("SOURCE.jpg")
         test = predict_landmarks(source[0])
         print("")
         # print('source before device', source.get_device())
