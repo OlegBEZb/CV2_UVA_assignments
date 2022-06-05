@@ -230,7 +230,6 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         print("swap shape", swap.shape)
         print("mask shape", mask.shape)
         plt.imshow(np.swapaxes(source[0], 0, -1))
-        plt.show()
         plt.savefig("SOURCE.jpg")
         test = predict_landmarks(source[0])
         print("")
@@ -529,6 +528,7 @@ def predict_landmarks(img):
   print(type(img))
   print(img[0,0])
   print(img.shape)
+  img = np.swapaxes(img[0], 0, -1)
   dets = detector(img/255, 1)
   if len(dets) < 1:
     return None # Face Not Found
