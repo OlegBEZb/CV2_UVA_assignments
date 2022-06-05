@@ -202,9 +202,6 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
 
 
 def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **blend_kwargs):
-
-    t_source, t_swap, t_target, t_pred, t_blend = Test(G, type="naive", **blend_kwargs)
-
     G.train(True)
     D.train(True)
     epoch_count += 1
@@ -351,11 +348,6 @@ def Test(G, type='normal', **blend_kwargs):
 
         # Feed the network with images from test set
         source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
-        print("HUN DATALOADER")
-        print(source.shape)
-        print(target.shape)
-        print(swap.shape)
-        print(mask.shape)
 
         if type == "normal":
             t = enumerate(val_loader)
@@ -391,12 +383,6 @@ def Test(G, type='normal', **blend_kwargs):
                 swap.append(np.swapaxes(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA),0,-1))
                 mask.append(np.swapaxes(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA),0,-1))
             source, target, swap, mask = torch.Tensor(source), torch.Tensor(target), torch.Tensor(swap), torch.Tensor(mask)
-
-            print("ONZE DATALOADER")
-            print(source.shape)
-            print(target.shape)
-            print(swap.shape)
-            print(mask.shape)
 
 
         elif type == "dl":
