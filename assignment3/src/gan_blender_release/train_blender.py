@@ -202,6 +202,9 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
 
 
 def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **blend_kwargs):
+
+    t_source, t_swap, t_target, t_pred, t_blend = Test(G, type="naive", **blend_kwargs)
+
     G.train(True)
     D.train(True)
     epoch_count += 1
@@ -225,14 +228,6 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         # being returned from your dataloader.
         # 1) Load and transfer data to device
         source, target, swap, mask = data['source'].squeeze(), data['target'].squeeze(), data['swap'].squeeze(), data['mask'].squeeze()
-        print("source shape", source.shape)
-        print("target shape", target.shape)
-        print("swap shape", swap.shape)
-        print("mask shape", mask.shape)
-        plt.imshow(np.swapaxes(source[0], 0, -1))
-        plt.savefig("SOURCE.jpg")
-        test = predict_landmarks(source[0])
-        print("")
         # print('source before device', source.get_device())
         source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
         # print('source shape, type, device after device', source.shape, source.type(), source.get_device())
@@ -349,27 +344,58 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
 def Test(G, type='normal', **blend_kwargs):
     with torch.no_grad():
         G.eval()
+
+
         t = enumerate(val_loader)
         i, images = next(t)
 
         # Feed the network with images from test set
         source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
+        print("HUN DATALOADER")
+        print(source.shape)
+        print(target.shape)
+        print(swap.shape)
+        print(mask.shape)
+
+        if type == "normal":
+            t = enumerate(val_loader)
+            i, images = next(t)
+
+            # Feed the network with images from test set
+            source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
 
         if type == "naive":
-            
             # find mask
-            fg_lm = predict_landmarks(source).astype(np.int32)
+            # fg_lm = predict_landmarks(source).astype(np.int32)
 
-            mask = np.zeros(source.shape, dtype=np.uint8)
-            roi_corners = np.array([np.concatenate((fg_lm[:17], # chin
-                                                    fg_lm[17:27][::-1], # eyebrows
-                                                    ), axis=0)], dtype=np.int32)
-            channel_count = source.shape[2]
-            ignore_mask_color = (255,)*channel_count
-            cv2.fillPoly(mask, roi_corners, ignore_mask_color)
+            # mask = np.zeros(source.shape, dtype=np.uint8)
+            # roi_corners = np.array([np.concatenate((fg_lm[:17], # chin
+            #                                         fg_lm[17:27][::-1], # eyebrows
+            #                                         ), axis=0)], dtype=np.int32)
+            # channel_count = source.shape[2]
+            # ignore_mask_color = (255,)*channel_count
+            # cv2.fillPoly(mask, roi_corners, ignore_mask_color)
 
-            # find swap
-            swap = np.where(mask, target, 0)
+            # # find swap
+            # swap = np.where(mask, target, 0)
+            combinations = [("0000","0","9999"), ("0001","1","9998"), ("0002","10","9997")]
+            source = []
+            target = []
+            swap = []
+            mask = []
+            for combi in combinations:
+                source.append(cv2.imread(f"../images_Emily/{combi[0]}_bg_{combi[2]}.png"))
+                target.append(cv2.imread(f"../images_Emily/{combi[0]}_fg_{combi[1]}.png"))
+                swap.append(cv2.imread(f"../images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"))
+                mask.append(cv2.imread(f"../images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"))
+            source, target, swap, mask = np.asarray(source), np.asarray(target), np.asarray(swap), np.asarray(mask)
+
+            print("ONZE DATALOADER")
+            print(source.shape)
+            print(target.shape)
+            print(swap.shape)
+            print(mask.shape)
+
 
         elif type == "dl":
             from face_swap import FaceSwap
@@ -525,10 +551,6 @@ predictor = openface.AlignDlib("shape_predictor_68_face_landmarks.dat")
 
 def predict_landmarks(img):
   img = img.detach().numpy()
-  print(type(img))
-  print(img[0,0])
-  print(img.shape)
-  img = np.swapaxes(img[0], 0, -1)
   dets = detector(img/255, 1)
   if len(dets) < 1:
     return None # Face Not Found
