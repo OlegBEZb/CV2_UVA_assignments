@@ -390,7 +390,7 @@ def Test(G, type='normal', **blend_kwargs):
                 target.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_fg_{combi[1]}.png"),0,-1))
                 swap.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),0,-1))
                 mask.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),0,-1))
-            source, target, swap, mask = np.asarray(source), np.asarray(target), np.asarray(swap), np.asarray(mask)
+            source, target, swap, mask = torch.Tensor(source), torch.Tensor(target), torch.Tensor(swap), torch.Tensor(mask)
 
             print("ONZE DATALOADER")
             print(source.shape)
