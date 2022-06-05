@@ -271,7 +271,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
 
 
         # loss_G_total = rec_weight * loss_rec + gan_weight * loss_G_GAN    # Oleg's loss
-        loss_G_total = - loss_D_total
+        loss_G_total = - torch.clone(loss_D_total)
         # img_blend_pred = G([p.to(device) for p in img_transfer_input_pyd])
         # img_blend_pred_pyd = img_utils.create_pyramid(img_blend_pred, len(source[0]))
         # pred_fake_pool = D([x.detach() for x in img_blend_pred_pyd])
