@@ -229,7 +229,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         print("target shape", target.shape)
         print("swap shape", swap.shape)
         print("mask shape", mask.shape)
-        plt.imshow(source[0])
+        plt.imshow(np.swapaxes(source[0], 0, -1))
         plt.show()
         test = predict_landmarks(source[0])
         print("")
