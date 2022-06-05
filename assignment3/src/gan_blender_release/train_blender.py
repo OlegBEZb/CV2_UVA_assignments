@@ -318,7 +318,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
                            t_pred[b], t_blend[b]]
         grid = img_utils.make_grid(total_grid_load,
                                    cols=len(total_grid_load))
-        grid = img_utils.tensor2rgb(grid.detach())
+        grid = img_utils.tensor2rgb(grid.detach())[..., ::-1]
         imageio.imwrite(visuals_loc + '/Epoch_%d_output_%d.png' %
                         (epoch_count, b), grid)
 
