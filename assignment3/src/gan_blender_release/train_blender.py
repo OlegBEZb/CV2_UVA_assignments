@@ -368,7 +368,7 @@ def main():
         # Step through the schedulers if using them.
         # You can also print out the losses of the network here to keep track of
         # epoch wise loss.
-        Train(G=generator, D=discriminator, epoch_count=epoch_count,
+        Train(G=generator, D=discriminator, epoch_count=i,
                            iter_count=iter_count, blend='alpha')  # love passing global variables
 
         # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
