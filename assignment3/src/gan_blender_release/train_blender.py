@@ -225,7 +225,12 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         # being returned from your dataloader.
         # 1) Load and transfer data to device
         source, target, swap, mask = data['source'].squeeze(), data['target'].squeeze(), data['swap'].squeeze(), data['mask'].squeeze()
-        test = predict_landmarks(source)
+        print("source shape", source.shape)
+        print("target shape", target.shape)
+        print("swap shape", swap.shape)
+        print("mask shape", mask.shape)
+        test = predict_landmarks(source[0])
+        print("")
         # print('source before device', source.get_device())
         source, target, swap, mask = source.to(device), target.to(device), swap.to(device), mask.to(device)
         # print('source shape, type, device after device', source.shape, source.type(), source.get_device())
