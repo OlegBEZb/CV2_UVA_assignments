@@ -386,10 +386,10 @@ def Test(G, type='normal', **blend_kwargs):
             for combi in combinations:
                 source_img = np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_bg_{combi[2]}.png"),0,-1)
                 print(source_img.shape)
-                source.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_bg_{combi[2]}.png")),0,-1)
-                target.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_fg_{combi[1]}.png")),0,-1)
-                swap.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png")),0,-1)
-                mask.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png")),0,-1)
+                source.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_bg_{combi[2]}.png"),0,-1))
+                target.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_fg_{combi[1]}.png"),0,-1))
+                swap.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),0,-1))
+                mask.append(np.swapaxes(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),0,-1))
             source, target, swap, mask = np.asarray(source), np.asarray(target), np.asarray(swap), np.asarray(mask)
 
             print("ONZE DATALOADER")
