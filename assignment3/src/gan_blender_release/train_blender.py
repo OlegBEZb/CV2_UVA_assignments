@@ -403,7 +403,7 @@ import torch
 from PIL import Image
 
 
-bfm = h5py.File("model2017-1_face12_nomouth.h5", 'r')
+bfm = h5py.File("/content/gdrive/MyDrive/CV_2/model2017-1_face12_nomouth.h5", 'r')
 
 # Select a specific weight from BFM
 id_mean = np.asarray(bfm['shape/model/mean'], dtype=np.float32) # 3N
