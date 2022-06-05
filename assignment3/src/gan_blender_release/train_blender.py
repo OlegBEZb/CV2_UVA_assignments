@@ -321,10 +321,10 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
                      checkpoint_pattern % ('D', epoch_count))
     tqdm.write('[!] Model Saved!')
 
-    return np.nanmean(total_loss_pix.detach().numpy().cpu()), \
-           np.nanmean(total_loss_id.detach().numpy().cpu()), np.nanmean(total_loss_attr.detach().numpy().cpu()), \
-           np.nanmean(total_loss_rec.detach().numpy().cpu()), np.nanmean(total_loss_G_Gan.detach().numpy().cpu()), \
-           np.nanmean(total_loss_D_Gan.detach().numpy().cpu()), iter_count
+    # return np.nanmean(total_loss_pix.detach().numpy().cpu()), \
+    #        np.nanmean(total_loss_id.detach().numpy().cpu()), np.nanmean(total_loss_attr.detach().numpy().cpu()), \
+    #        np.nanmean(total_loss_rec.detach().numpy().cpu()), np.nanmean(total_loss_G_Gan.detach().numpy().cpu()), \
+    #        np.nanmean(total_loss_D_Gan.detach().numpy().cpu()), iter_count
 
 
 def Test(G, **blend_kwargs):
@@ -368,7 +368,7 @@ def main():
         # Step through the schedulers if using them.
         # You can also print out the losses of the network here to keep track of
         # epoch wise loss.
-        total_loss = Train(G=generator, D=discriminator, epoch_count=epoch_count,
+        Train(G=generator, D=discriminator, epoch_count=epoch_count,
                            iter_count=iter_count, blend='alpha')  # love passing global variables
 
         # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
