@@ -204,6 +204,11 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
 
 
 def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **blend_kwargs):
+    swap_type="naive"
+
+    t_source, t_swap, t_target, t_pred, t_blend = Test(G, type=swap_type, **blend_kwargs)
+
+
     G.train(True)
     D.train(True)
     epoch_count += 1
@@ -351,6 +356,10 @@ def Test(G, type='normal', **blend_kwargs):
         # Feed the network with images from test set
         source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
         print(source.shape)
+        print(source.dtype)
+        print(target.dtype)
+        print(swap.dtype)
+        print(mask.dtype)
 
         if type == "normal":
             t = enumerate(val_loader)
@@ -394,10 +403,10 @@ def Test(G, type='normal', **blend_kwargs):
                 mask.append(torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA)),(2,1,0)))
 
             source, target, swap, mask = torch.stack(source), torch.stack(target), torch.stack(swap), torch.stack(mask)
-            print(source.shape)
-            print(target.shape)
-            print(swap.shape)
-            print(mask.shape)
+            print(source.dtype)
+            print(target.dtype)
+            print(swap.dtype)
+            print(mask.dtype)
 
 
         elif type == "dl":
