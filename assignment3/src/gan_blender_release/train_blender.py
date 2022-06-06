@@ -371,7 +371,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         pbar.set_description()
 
     # Save output of the network at the end of each epoch. The Generator
-    swap_type="normal"
+    swap_type="naive"
 
     t_source, t_swap, t_target, t_pred, t_blend = Test(G, type=swap_type, **blend_kwargs)
     for b in range(t_pred.shape[0]):
@@ -382,6 +382,8 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         grid = img_utils.tensor2rgb(grid.detach())[..., ::-1]
         imageio.imwrite(visuals_loc + '/%s_Epoch_%d_output_%d.png' %
                         (swap_type, epoch_count, b), grid)
+        if epoch_count == 20:
+            imageio.imwrite(visuals_loc + '/PRED_%s_output_%d.png' % (swap_type, b), t_pred[b])
 
     utils.saveModels(G, optimizer_G, iter_count,
                      checkpoint_pattern % ('G', epoch_count))
