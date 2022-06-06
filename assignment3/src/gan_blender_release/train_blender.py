@@ -238,7 +238,11 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
     out_tensors = []
     for b in range(source_tensor.shape[0]):
         source_img = img_utils.tensor2bgr(source_tensor[b])
+        plt.imshow(source_img)
+        plt.show()
         target_img = img_utils.tensor2bgr(target_tensor[b])
+        plt.imshow(target_img)
+        plt.show()
         if blend == 'alpha':
             out_bgr = cv2.addWeighted(src1=source_img, alpha=alpha, src2=target_img, beta=1-alpha, gamma=0)
         elif blend == 'poisson':
@@ -248,11 +252,13 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
         elif blend == 'laplacian':
             mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
             plt.imshow(mask)
-            plt.savefig("mask.png")
+            plt.show()
+            # plt.savefig("mask.png")
             mask = np.round(mask * 255).astype('uint8')
             out_bgr = laplacian_pyramid_blending(source_img, target_img, mask)
             plt.imshow(out_bgr)
-            plt.savefig("out_bgr.png")
+            plt.show()
+            # plt.savefig("out_bgr.png")
         out_tensors.append(img_utils.bgr2tensor(out_bgr))
 
     return torch.cat(out_tensors, dim=0)
