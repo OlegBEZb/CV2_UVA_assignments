@@ -484,12 +484,12 @@ def Test(G, type='normal', **blend_kwargs):
                 target_img = target_img.type(torch.FloatTensor)
                 target.append(target_img)
 
-                swap_img = torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_opt/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA)),(2,1,0))
+                swap_img = torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_opt/{combi[0]}_fg_{combi[1]}.png_swap.png"),(224,224),interpolation = cv2.INTER_AREA)),(2,1,0))
                 swap_img = swap_img/255 * 2 - 1
                 swap_img = swap_img.type(torch.FloatTensor)
                 swap.append(swap_img)
 
-                mask_img = torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_opt/{combi[0]}_mask_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA)),(2,1,0))
+                mask_img = torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_opt/{combi[0]}_fg_{combi[1]}.png_mask.png"),(224,224),interpolation = cv2.INTER_AREA)),(2,1,0))
                 mask_img = mask_img/255 * 2 - 1
                 mask_img = mask_img.type(torch.FloatTensor)
                 mask.append(mask_img)
