@@ -188,6 +188,8 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
     assert blend in ['alpha', 'poisson'], "'alpha' and 'poisson' blending methods are implemented at the moment"
     out_tensors = []
     for b in range(source_tensor.shape[0]):
+        print(source_tensor[b])
+        print(target_tensor[b])
         source_img = img_utils.tensor2bgr(source_tensor[b])
         target_img = img_utils.tensor2bgr(target_tensor[b])
         if blend == 'alpha':
