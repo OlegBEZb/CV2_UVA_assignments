@@ -249,7 +249,7 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
             out_bgr = blend_imgs_bgr(source_img, target_img, mask)
         elif blend == 'laplacian':
             mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
-            imageio.imwrite(visuals_loc + '/mask_img.png' , mask_img)     
+            imageio.imwrite(visuals_loc + '/mask_img.png' , mask)     
             mask = np.round(mask * 255).astype('uint8')
             out_bgr = laplacian_pyramid_blending(source_img, target_img, mask)
             imageio.imwrite(visuals_loc + '/out_bgr.png' , out_bgr)     
