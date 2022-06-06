@@ -528,7 +528,7 @@ def main():
         # You can also print out the losses of the network here to keep track of
         # epoch wise loss.
         Train(G=generator, D=discriminator, epoch_count=i,
-                           iter_count=iter_count, blend='laplacian')  # love passing global variables
+                           iter_count=iter_count, blend='poisson')  # love passing global variables
 
         # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
         # if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
