@@ -204,11 +204,6 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
 
 
 def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **blend_kwargs):
-    swap_type="naive"
-
-    t_source, t_swap, t_target, t_pred, t_blend = Test(G, type=swap_type, **blend_kwargs)
-
-
     G.train(True)
     D.train(True)
     epoch_count += 1
@@ -349,13 +344,6 @@ def Test(G, type='normal', **blend_kwargs):
     with torch.no_grad():
         G.eval()
 
-
-        t = enumerate(val_loader)
-        i, images = next(t)
-
-        # Feed the network with images from test set
-        source, target, swap, mask = images['source'].squeeze(), images['target'].squeeze(), images['swap'].squeeze(), images['mask'].squeeze()
-
         if type == "normal":
             t = enumerate(val_loader)
             i, images = next(t)
@@ -411,12 +399,6 @@ def Test(G, type='normal', **blend_kwargs):
                 mask.append(mask_img)
 
             source, target, swap, mask = torch.stack(source), torch.stack(target), torch.stack(swap), torch.stack(mask)
-            print(source.shape)
-            print(source.dtype)
-            print(target.dtype)
-            print(swap.dtype)
-            print(mask.dtype)
-
 
         elif type == "dl":
             from face_swap import FaceSwap
