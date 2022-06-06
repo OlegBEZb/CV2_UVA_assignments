@@ -184,18 +184,69 @@ def blend_imgs_bgr(source_img, target_img, mask):
     return output
 
 
+def laplacian_pyramid_blending(A, B, m, num_levels=6):
+    m[m == 255] = 1
+
+    GA = A.copy()
+    GB = B.copy()
+    GM = m.copy()
+
+    gpA = [GA]
+    gpB = [GB]
+    gpM = [GM]
+
+    for i in range(num_levels):
+        GA = cv2.pyrDown(GA)
+        GB = cv2.pyrDown(GB)
+        GM = cv2.pyrDown(GM)
+
+        gpA.append(np.float32(GA))
+        gpB.append(np.float32(GB))
+        gpM.append(np.float32(GM))
+
+    lpA = [gpA[num_levels - 1]]
+    lpB = [gpB[num_levels - 1]]
+    gpMr = [gpM[num_levels - 1]]
+
+    for i in range(num_levels - 1, 0, -1):
+        size = (gpA[i - 1].shape[1], gpA[i - 1].shape[0])
+
+        LA = np.subtract(gpA[i - 1], cv2.pyrUp(gpA[i], dstsize=size))
+        LB = np.subtract(gpB[i - 1], cv2.pyrUp(gpB[i], dstsize=size))
+
+        lpA.append(LA)
+        lpB.append(LB)
+
+        gpMr.append(gpM[i - 1])
+
+    LS = []
+    for la, lb, gm in zip(lpA, lpB, gpMr):
+        ls = la * gm + lb * (1.0 - gm)
+        LS.append(ls)
+
+    ls_ = LS[0]
+    for i in range(1, num_levels):
+        size = (LS[i].shape[1], LS[i].shape[0])
+        ls_ = cv2.add(cv2.pyrUp(ls_, dstsize=size), np.float32(LS[i]))
+        ls_[ls_ > 255] = 255; ls_[ls_ < 0] = 0
+
+    return ls_.astype(np.uint8)[:,:,::-1]
+
+
 def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_tensor: torch.Tensor, blend='alpha', alpha=0.5):
-    assert blend in ['alpha', 'poisson'], "'alpha' and 'poisson' blending methods are implemented at the moment"
+    assert blend in ['alpha', 'poisson', 'laplacian'], "'alpha, poisson' and 'laplacian' blending methods are implemented at the moment"
     out_tensors = []
     for b in range(source_tensor.shape[0]):
         source_img = img_utils.tensor2bgr(source_tensor[b])
         target_img = img_utils.tensor2bgr(target_tensor[b])
         if blend == 'alpha':
             out_bgr = cv2.addWeighted(src1=source_img, alpha=alpha, src2=target_img, beta=1-alpha, gamma=0)
-        else:
+        elif blend == 'poisson':
             mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
             mask = np.round(mask * 255).astype('uint8')
             out_bgr = blend_imgs_bgr(source_img, target_img, mask)
+        elif blend == 'laplacian':
+            out_bgr = laplacian_pyramid_blending(source_img, target_img, mask)
         out_tensors.append(img_utils.bgr2tensor(out_bgr))
 
     return torch.cat(out_tensors, dim=0)
@@ -812,7 +863,7 @@ def main():
         # You can also print out the losses of the network here to keep track of
         # epoch wise loss.
         Train(G=generator, D=discriminator, epoch_count=i,
-                           iter_count=iter_count, blend='poisson')  # love passing global variables
+                           iter_count=iter_count, blend='laplacian')  # love passing global variables
 
         # # Schedulers step (in PyTorch 1.1.0+ it must follow after the epoch training and validation steps)
         # if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
