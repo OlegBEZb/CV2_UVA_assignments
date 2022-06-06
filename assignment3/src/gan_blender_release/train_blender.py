@@ -246,6 +246,8 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
             mask = np.round(mask * 255).astype('uint8')
             out_bgr = blend_imgs_bgr(source_img, target_img, mask)
         elif blend == 'laplacian':
+            mask = mask_tensor[b].squeeze().permute(1, 2, 0).cpu().numpy()
+            mask = np.round(mask * 255).astype('uint8')
             out_bgr = laplacian_pyramid_blending(source_img, target_img, mask)
         out_tensors.append(img_utils.bgr2tensor(out_bgr))
 
