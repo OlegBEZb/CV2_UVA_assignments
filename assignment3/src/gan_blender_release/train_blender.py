@@ -371,7 +371,7 @@ def Train(G: torch.nn.Module, D: torch.nn.Module, epoch_count, iter_count, **ble
         pbar.set_description()
 
     # Save output of the network at the end of each epoch. The Generator
-    swap_type="normal"
+    swap_type="opt"
 
     t_source, t_swap, t_target, t_pred, t_blend = Test(G, type=swap_type, **blend_kwargs)
     for b in range(t_pred.shape[0]):
