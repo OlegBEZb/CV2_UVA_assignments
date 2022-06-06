@@ -238,6 +238,7 @@ def blend_imgs(source_tensor: torch.Tensor, target_tensor: torch.Tensor, mask_te
     out_tensors = []
     for b in range(source_tensor.shape[0]):
         source_img = img_utils.tensor2bgr(source_tensor[b])
+        plt.figure()
         plt.imshow(source_img)
         plt.show()
         target_img = img_utils.tensor2bgr(target_tensor[b])
