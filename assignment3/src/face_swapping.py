@@ -9,9 +9,6 @@ import matplotlib.pyplot as plt
 import torch
 from PIL import Image
 
-# import sys
-# sys.path.insert(1, '~/Documents/MSc AI/ComputerVision2/assignment3/cv2_2022_assignment3/supplemental_code/supplemental_code')
-# import supplemental_code
 
 bfm = h5py.File("model2017-1_face12_nomouth.h5", 'r')
 
@@ -45,7 +42,7 @@ color = np.reshape(color, (-1,3))
 
 triangles = np.asarray(bfm['shape/representer/cells'], dtype=np.float32).T # 3xK
 
-# MOETEN WE NOG FIXEN MET EEN IMPORT
+# TODO MOETEN WE NOG FIXEN MET EEN IMPORT
 def save_obj(file_path, shape, color, triangles):
     assert len(shape.shape) == 2
     assert len(color.shape) == 2
@@ -120,35 +117,6 @@ def convertTo2D(G_new):
     # G_new = torch.delete(G_new, obj=[2,3], axis=0)
     return G_def[:2,:].T # 2xN, only first 2 rows (x,y)
 
-def convertTo2D_version2(G_new):
-    vec = torch.ones((G_new.shape[0],1))
-    G_conv = torch.cat((G_new,vec),1)
-    n = torch.tensor(0.1)
-    f = torch.tensor(10)
-    W = 128
-    H = 128
-    fov_y = torch.tensor(0.5)
-
-    aspect = W/H
-
-    t = torch.tan(fov_y/2)*n
-    b = -t
-    r = t * aspect
-    l = -t*aspect
-
-    P = torch.Tensor([[2*n/(r-l), 0, (r+1)/(r-1), 0],
-                [0, 2*n/(t-b), (t+b)/(t-b), 0],
-                [0, 0, -(f+n)/(f-n), -2*f*n/(f-n)],
-                [0, 0, -1, 0]])
-
-    V = torch.Tensor([[(r-l)/2, 0, 0, (r+l)/2],
-                      [0, (t-b)/2, 0, (t+b)/2],
-                      [0, 0, 1/2, 1/2],
-                      [0, 0, 0, 1]])
-
-    PI = V.T @ P
-    tmp = G_conv @ PI
-    return (tmp[:,:2].T / tmp[:,3]).T
 
 def zbuffer_approach(G_new):
     G_new = G_new.detach().numpy()
@@ -177,8 +145,6 @@ def zbuffer_approach(G_new):
     plt.show()
 
     return torch.from_numpy(img_idx)
-
-# img_G = makeImag(G_new)
 
 # Face Detector
 detector = dlib.get_frontal_face_detector()
@@ -319,11 +285,6 @@ def texturing(G, color, triangles):
     image = render(G, color, triangles.astype(int), H=height, W=width)
     return image
 
-# landmarks = predict_landmarks(img_G)
-# visualize_landmarks(img_G, landmarks, 4)
-
-### LATENT PARAMETERS ESTIMATION
-
 
 def find_ground_truth_landmarks(person):
     ground_truth = predict_landmarks(person)
@@ -333,8 +294,6 @@ def find_ground_truth_landmarks(person):
     y_translate = np.min(ground_truth[:,1]) + (np.max(ground_truth[:,1]) - np.min(ground_truth[:,1]))/2
     ground_truth = ground_truth - np.array([x_translate, y_translate])
     return ground_truth
-
-
 
 
 def optimize_geometry(ground_truth_landmarks, file_name):
@@ -352,7 +311,6 @@ def optimize_geometry(ground_truth_landmarks, file_name):
     epsilon = 0.00001
     i = 0
     while (abs(old_loss - new_loss) > epsilon):
-    # while (i < 100):
         optim.zero_grad()
         old_loss = new_loss
         G = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
@@ -360,14 +318,6 @@ def optimize_geometry(ground_truth_landmarks, file_name):
         G_lm = G[indices_model,:]
         G_new = (general_rotation(omega) @ G_lm.T).T + t
         predicted = convertTo2D(G_new)
-
-        # if i % 1000 == 0:
-        #     tmp_predicted = predicted.detach().numpy()
-        #     # gt = ground_truths[0].detach().numpy()
-        #     plt.scatter(tmp_predicted[:,0],tmp_predicted[:,1],label="predicted")
-        #     plt.scatter(ground_truth_landmarks[:,0], ground_truth_landmarks[:,1], label="ground truth")
-        #     plt.legend()
-        #     plt.show()
 
         loss_lan = torch.mean(torch.linalg.norm(predicted - torch.from_numpy(ground_truth_landmarks))**2)
 
@@ -387,17 +337,6 @@ def optimize_geometry(ground_truth_landmarks, file_name):
 
         new_loss = loss_fit.item()
         i = i+1
-        # break
-
-        # if (abs(old_loss - new_loss) < epsilon):
-        #     tmp_predicted = predicted.detach().numpy()
-        #     # gt = ground_truths[0].detach().numpy()
-        #     tmp_predicted[:,1] = -tmp_predicted[:,1]
-        #     plt.scatter(tmp_predicted[:,0],tmp_predicted[:,1],label="predicted")
-        #     ground_truth_landmarks[:,1] = -ground_truth_landmarks[:,1]
-        #     plt.scatter(ground_truth_landmarks[:,0], ground_truth_landmarks[:,1], label="ground truth")
-        #     plt.legend()
-        #     plt.show()
 
     G_def = torch.Tensor(id_mean) + torch.Tensor(id_pcabasis30) @ (alpha * torch.sqrt(torch.Tensor(id_pcavariance30))) + torch.Tensor(expr_mean) + torch.Tensor(expr_pcabasis20) @ (delta * torch.sqrt(torch.Tensor(expr_pcavariance20)))
     G_new_def = (general_rotation(omega) @ G_def.T).T + t
@@ -510,7 +449,6 @@ def optimized_geometry_video(video_path):
     epsilon = 0.01
     j = 0
     while (abs(old_loss - new_loss) > epsilon):
-    # while (j < 25):
         print("prediction #",j)
 
         optim.zero_grad()
@@ -566,17 +504,11 @@ def face_swapping_video(bg_video_path, fg_image_path):
 
     all_images = []
     counting = 0
-    print("Nu nog")
-    print(len(bg_frames))
-    print("loops")
     for bg_frame, bg_omega, bg_t in zip(bg_frames, bg_omegas, bg_ts):
-        print(counting)
         fg_adopted = (general_rotation(bg_omega) @ fg_G.T).T + bg_t
-        print("fg_adopted shape", fg_adopted.shape)
         bg_landmarks = predict_landmarks(bg_frame)
         # render an image of the new face, using the position of the face in the original image
         mask = np.full(bg_frame.shape, 255, dtype=np.uint8)
-        print("mask shape ", mask.shape)
         forehead = bg_landmarks[17:27]
         forehead[:,1] += -35
         roi_corners = np.array([np.concatenate((bg_landmarks[:17], # chin
@@ -587,31 +519,15 @@ def face_swapping_video(bg_video_path, fg_image_path):
         cv2.fillPoly(mask, roi_corners, ignore_mask_color)
 
         fg_adopted_img = texturing_for_faceswap(fg_adopted.detach().numpy(), color, triangles, bg_frame.shape, mask)
-        print("fg_adopted_img shape", fg_adopted_img.shape)
-        # plt.imshow(fg_adopted_img)
-        # plt.show()
-        # first version
-        # swapped = np.where(mask, (bg_frame.detach().numpy()/255)[..., ::-1], fg_adopted_img)
-        # plt.imshow(swapped)
-        # plt.axis("off")
-        # plt.show()
 
-        # second version swapped
         new_mask = np.tile(np.any(fg_adopted_img > 0, axis=2, keepdims=True), (1, 1, 3))
-        print("new_mask shape ", new_mask.shape)
         new_bg = np.copy(bg_frame)
-        print("new_bg shape", new_bg.shape)
         new_bg[new_mask] = 0
         new_output = np.where(new_mask, fg_adopted_img, (new_bg/255)[..., ::-1])
 
         plt.imshow(new_output)
         plt.axis("off")
         plt.savefig("faceswap%d.jpg" % counting)
-        # plt.show()
-
-        # im = Image.fromarray(new_output)
-        # im.save("faceswap%d.jpg" % counting)
-        # cv2.imwrite("faceswap%d.jpg" % counting, new_output)  # save frame as JPEG file
 
         all_images.append(new_output)
         counting += 1
@@ -622,16 +538,12 @@ def face_swapping_video(bg_video_path, fg_image_path):
         out.write(all_images[i])
     out.release()
 
-    print("KLAAR?")
 
 def face_swapping(fg_path, bg_path):
     fg = cv2.imread(fg_path)
     fg = cv2.resize(fg, (256,256), interpolation = cv2.INTER_AREA)
     bg = cv2.imread(bg_path)
     bg = cv2.resize(bg, (256,256), interpolation = cv2.INTER_AREA)
-
-    print(fg.shape)
-    print(bg.shape)
 
     fg  = torch.from_numpy(fg)
     bg  = torch.from_numpy(bg)
@@ -645,7 +557,7 @@ def face_swapping(fg_path, bg_path):
     fg_adopted = (general_rotation(bg_omega) @ fg_G.T).T + bg_t
 
     bg_landmarks = predict_landmarks(bg)
-    print("bg landmarks", bg_landmarks)
+
     # render an image of the new face, using the position of the face in the original image
     mask = np.full(bg.shape, 255, dtype=np.uint8)
     forehead = bg_landmarks[17:27]
@@ -658,13 +570,6 @@ def face_swapping(fg_path, bg_path):
     cv2.fillPoly(mask, roi_corners, ignore_mask_color)
     fg_adopted_img = texturing_for_faceswap(fg_adopted.detach().numpy(), color, triangles, bg.shape, mask)
 
-    # first version
-    # swapped = np.where(mask, (bg.detach().numpy()/255)[..., ::-1], fg_adopted_img)
-    # plt.imshow(swapped)
-    # plt.axis("off")
-    # plt.show()
-
-    # second version swapped
     new_mask = np.tile(np.any(fg_adopted_img > 0, axis=2, keepdims=True), (1, 1, 3))
     new_bg = np.copy(bg)
     new_bg[new_mask] = 0
@@ -689,10 +594,6 @@ def train_model_multiple(img_path_list, names_list):
         gt_landmarks_list.append(gt_landmarks)
 
     Gs, alpha, deltas, omegas, ts = optimized_geometry_multiple(gt_landmarks_list, names_list)
-    print(Gs)
-    print(alpha)
-    print(deltas)
-    print(omegas)
 
 train_model_multiple(["img1.jpg", "img2.jpg", "img3.jpg"], ["multiple1.obj", "multiple2.obj", "multiple3.obj"])
 # train_model("person.jpeg", "person_model")

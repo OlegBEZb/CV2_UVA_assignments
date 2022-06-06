@@ -1,0 +1,40 @@
+certifi==2021.5.30
+cffi @ file:///C:/ci/cffi_1625831763871/work
+colorama==0.4.4
+cycler @ file:///tmp/build/80754af9/cycler_1637851556182/work
+dataclasses @ file:///tmp/build/80754af9/dataclasses_1614363715916/work
+dlib @ file:///D:/bld/dlib_1617441818780/work
+docopt==0.6.2
+gdbn==0.1
+gnumpy==0.2
+h5py==2.10.0
+imageio==2.15.0
+importlib-resources==5.4.0
+joblib @ file:///tmp/build/80754af9/joblib_1613502643832/work
+kiwisolver @ file:///C:/ci/kiwisolver_1612282446297/work
+matplotlib @ file:///C:/ci/matplotlib-suite_1613408055530/work
+mkl-fft==1.3.0
+mkl-random==1.1.1
+mkl-service==2.3.0
+numpy @ file:///C:/ci/numpy_and_numpy_base_1603480701039/work
+olefile==0.46
+opencv-python==4.5.5.64
+openface==0.2.1
+Pillow==8.4.0
+pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
+pyparsing @ file:///tmp/build/80754af9/pyparsing_1635766073266/work
+pyreadline==2.1
+python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
+pytz==2022.1
+scikit-learn==0.17.1
+scipy @ file:///C:/ci/scipy_1597675683670/work
+six @ file:///tmp/build/80754af9/six_1644875935023/work
+threadpoolctl @ file:///Users/ktietz/demo/mc3/conda-bld/threadpoolctl_1629802263681/work
+torch==1.10.2
+torchaudio==0.10.2
+torchvision==0.11.3
+tornado @ file:///C:/ci/tornado_1606942379977/work
+tqdm==4.64.0
+typing_extensions @ file:///opt/conda/conda-bld/typing_extensions_1647553014482/work
+wincertstore==0.2
+zipp==3.6.0
