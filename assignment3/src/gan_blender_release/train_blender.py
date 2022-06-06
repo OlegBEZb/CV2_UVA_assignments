@@ -435,8 +435,8 @@ def Test(G, type='normal', **blend_kwargs):
                 target.append(target_img)
 
                 source_img = torch.permute(torch.from_numpy(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_fg_{combi[1]}.png")),(2,1,0))
-                source_img = target_img/255 * 2 - 1
-                source_img = target_img.type(torch.FloatTensor)
+                source_img = source_img/255 * 2 - 1
+                source_img = source_img.type(torch.FloatTensor)
                 source.append(source_img)
 
                 swap_img = torch.permute(torch.from_numpy(cv2.resize(cv2.imread(f"/content/gdrive/MyDrive/CV_2/images_Emily/{combi[0]}_sw_{combi[2]}_{combi[1]}.png"),(224,224),interpolation = cv2.INTER_AREA)),(2,1,0))
